@@ -6,18 +6,16 @@ using NoteWork.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Conexión a PostgreSQL: la cadena viene de User Secrets en desarrollo.
+// Conexión a PostgreSQL: la cadena viene de User Secrets en desarrollo
+// y de la variable de entorno ConnectionStrings__NoteWorkDb en el servidor (Render).
 var cadenaConexion = builder.Configuration.GetConnectionString("NoteWorkDb")
     ?? throw new InvalidOperationException(
-        "No se encontró la cadena de conexión 'NoteWorkDb'. Revisa User Secrets.");
+        "No se encontró la cadena de conexión 'NoteWorkDb'. Revisa User Secrets o las variables de entorno.");
 
 builder.Services.AddDbContext<AppDbContext>(opciones =>
     opciones.UseNpgsql(cadenaConexion));
 
 // --- IDENTITY (usuarios, contraseñas y login) ---
-// AddIdentityApiEndpoints prepara todo lo necesario para que la Api pueda
-// registrar usuarios e iniciar sesión con "tokens".
 builder.Services.AddIdentityApiEndpoints<Usuario>(opciones =>
 {
     // Dos usuarios no pueden tener el mismo correo.
@@ -28,7 +26,10 @@ builder.Services.AddIdentityApiEndpoints<Usuario>(opciones =>
     // Le dice a Identity que guarde usuarios y roles en NUESTRA base.
     .AddEntityFrameworkStores<AppDbContext>();
 
-// --- CORS (4.15.4) ---
+// --- CORS ---
+// Las direcciones permitidas salen de la configuración "Cors:OrigenesPermitidos".
+// En el servidor se define con la variable Cors__OrigenesPermitidos__0 (y __1, etc.).
+// Si no hay configuración, se usan las direcciones de tu PC.
 var origenesPermitidos =
     builder.Configuration.GetSection("Cors:OrigenesPermitidos").Get<string[]>()
     ?? ["https://localhost:7045", "http://localhost:5209"];
@@ -45,17 +46,19 @@ builder.Services.AddCors(opciones =>
 });
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// --- DATOS INICIALES (solo en desarrollo) ---
-if (app.Environment.IsDevelopment())
+// --- BASE DE DATOS Y DATOS INICIALES (en desarrollo y en producción) ---
 {
     using var alcance = app.Services.CreateScope();
     var servicios = alcance.ServiceProvider;
     var db = servicios.GetRequiredService<AppDbContext>();
+
+    // --- 0. MIGRACIONES AUTOMÁTICAS ---
+    // Crea o actualiza las tablas al arrancar (en el servidor nadie corre Update-Database).
+    await db.Database.MigrateAsync();
 
     // --- 1. LA EMPRESA ---
     var empresa = await db.Empresas
@@ -84,6 +87,8 @@ if (app.Environment.IsDevelopment())
     }
 
     // --- 3. EL PRIMER USUARIO ---
+    // Solo se crea si NO hay ningún usuario y están las 3 configuraciones.
+    // Los valores NUNCA van escritos aquí: vienen de User Secrets o de variables de entorno.
     var email = app.Configuration["PrimerUsuario:Email"];
     var nombre = app.Configuration["PrimerUsuario:NombreCompleto"];
     var clave = app.Configuration["PrimerUsuario:Password"];
@@ -118,26 +123,27 @@ if (app.Environment.IsDevelopment())
 }
 // --- FIN DE DATOS INICIALES ---
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-}
 
-app.UseHttpsRedirection();
+    // La redirección a HTTPS solo se usa en tu PC.
+    // En Render el HTTPS lo maneja Render por fuera y la Api escucha en HTTP (puerto 8080).
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("PermitirClient");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Dirección de comprobación: devuelve "ok" si la Api está despierta.
+app.MapGet("/salud", () => Results.Ok("ok"));
+
 app.MapCuentaEndpoints();
 app.MapClientesEndpoints();
-// LÍNEA AGREGADA: Registra los endpoints de Proyectos
 app.MapProyectosEndpoints();
-// LÍNEA AGREGADA: Registra los endpoints de Nodos
 app.MapNodosEndpoints();
-// LÍNEA AGREGADA: Registra los endpoints de Partidas
 app.MapPartidasEndpoints();
 
 app.MapControllers();
