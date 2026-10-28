@@ -1,0 +1,125 @@
+﻿@page "/usuarios/nuevo"
+@* Esta pantalla vive en la dirección /usuarios/nuevo. *@
+@using System.ComponentModel.DataAnnotations
+@using NoteWork.Client.Servicios
+@using NoteWork.Shared.Cuenta
+@inject ServicioUsuarios Usuarios
+
+@* (4.19) Solo entra quien tenga sesión Y el rol Admin. OJO: esto solo protege
+   lo que se VE en el Client. La protección real es la Api, que también exige
+   el rol Admin en POST /api/cuenta/usuarios. *@
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Crear usuario</PageTitle>
+
+<div class="container" style="max-width: 420px;">
+    <h1 class="h3 mb-3">Crear usuario</h1>
+
+    @* OnValidSubmit se ejecuta SOLO si los datos pasan las validaciones de abajo,
+       así no viajamos a la Api con datos vacíos. *@
+    <EditForm Model="formulario" OnValidSubmit="Crear">
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label for="nombre" class="form-label">Nombre completo</label>
+            <InputText id="nombre" class="form-control"
+                       autocomplete="off" @bind-Value="formulario.NombreCompleto" />
+            <ValidationMessage For="() => formulario.NombreCompleto" />
+        </div>
+
+        <div class="mb-3">
+            <label for="email" class="form-label">Correo</label>
+            <InputText id="email" type="email" class="form-control"
+                       autocomplete="off" @bind-Value="formulario.Email" />
+            <ValidationMessage For="() => formulario.Email" />
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Contraseña</label>
+            @* autocomplete="new-password": le dice al navegador que NO rellene aquí
+               tu propia contraseña de admin; esta es la clave del usuario nuevo. *@
+            <InputText id="password" type="password" class="form-control"
+                       autocomplete="new-password" @bind-Value="formulario.Password" />
+            <ValidationMessage For="() => formulario.Password" />
+        </div>
+
+        @* Mensaje de error (viene de ServicioUsuarios). *@
+        @if (error is not null)
+        {
+            <div class="alert alert-danger" role="alert">@error</div>
+        }
+
+        @* Mensaje de éxito. *@
+        @if (exito is not null)
+        {
+            <div class="alert alert-success" role="alert">@exito</div>
+        }
+
+        @* disabled="@enviando": mientras la petición va en camino el botón se
+           bloquea, así un toque doble en el celular no crea el usuario dos veces. *@
+        <button type="submit" class="btn btn-primary w-100" disabled="@enviando">
+            @(enviando ? "Creando..." : "Crear usuario")
+        </button>
+    </EditForm>
+</div>
+
+@code {
+    private FormularioUsuario formulario = new();
+    private string? error;
+    private string? exito;
+    private bool enviando;
+
+    private async Task Crear()
+    {
+        enviando = true;
+        error = null;
+        exito = null;
+
+        // Armamos la solicitud que la Api espera (la clase de Shared).
+        // Aquí NO hay EmpresaId ni Rol a propósito: los decide el servidor.
+        var solicitud = new CrearUsuarioSolicitud
+        {
+            Email = formulario.Email.Trim(),                   // quita espacios al copiar/pegar
+            NombreCompleto = formulario.NombreCompleto.Trim(),
+            Password = formulario.Password                     // NO se recorta: los espacios cuentan
+        };
+
+        // Toda la lógica de red vive en ServicioUsuarios.
+        var (ok, mensaje) = await Usuarios.CrearUsuarioAsync(solicitud);
+
+        if (ok)
+        {
+            exito = $"Usuario {solicitud.Email} creado correctamente.";
+
+            // Limpiamos el formulario (incluida la contraseña) para poder crear
+            // otro usuario y para no dejar una clave a la vista en pantalla.
+            formulario = new FormularioUsuario();
+        }
+        else
+        {
+            error = mensaje;
+        }
+
+        enviando = false;   // se desbloquea el botón
+    }
+
+    // Igual que en Login: CrearUsuarioSolicitud tiene las mismas reglas, pero
+    // usamos esta clase pequeña para el formulario y la convertimos al enviar.
+    // Mismas validaciones que en Shared (primera barrera rápida en el celular;
+    // la Api vuelve a validar todo).
+    private class FormularioUsuario
+    {
+        [Required(ErrorMessage = "El nombre es obligatorio.")]
+        [StringLength(150, MinimumLength = 2, ErrorMessage = "El nombre debe tener entre 2 y 150 caracteres.")]
+        public string NombreCompleto { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "El correo es obligatorio.")]
+        [EmailAddress(ErrorMessage = "El correo no tiene un formato válido.")]
+        [StringLength(256)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "La contraseña es obligatoria.")]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "La contraseña debe tener al menos 8 caracteres.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

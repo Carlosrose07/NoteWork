@@ -1,0 +1,126 @@
+﻿@* NavMenu.razor: menú lateral de NoteWork.   4.15.14: ahora muestra "Iniciar sesión" si no hay sesión, o "Cerrar sesión" si la hay.   4.19: si quien entró es Admin, también muestra "Crear usuario".   Cuando existan pantallas reales (Proyectos, Clientes, etc.) se agregan aquí,   un bloque <div class="nav-item"> por cada una. *@
+
+@* "inject" = pedirle a Blazor las herramientas que necesitamos (inyección de dependencias). *@
+@using NoteWork.Client.Servicios
+@inject ServicioSesion Sesion
+@inject NavigationManager Navegador
+@* IDisposable nos permite "darnos de baja" del aviso al destruir el menú (ver Dispose abajo). *@
+@implements IDisposable
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        @* href="" lleva siempre a la página de inicio *@
+        <a class="navbar-brand" href="">NoteWork</a>
+    </div>
+</div>
+
+@* Este checkbox es el botón que abre y cierra el menú en celulares (lo controla el CSS). *@
+<input type="checkbox" title="Menú de navegación" class="navbar-toggler" />
+
+@* El onclick cierra el menú en el celular después de tocar un enlace. *@
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            @* Match="NavLinkMatch.All": el enlace se marca como activo solo en la página de inicio exacta. *@
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Inicio
+            </NavLink>
+        </div>
+
+        @* Solo dibujamos estos enlaces cuando ya sabemos si hay sesión o no.           Así no se ve un parpadeo de "Iniciar sesión" mientras se consulta. *@
+        @if (_cargado)
+        {
+            @if (_haySesion)
+            {
+                @* NUEVO: Enlace al módulo de Clientes. Visible para cualquier usuario con sesión iniciada. *@
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="clientes">
+                        Clientes
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="proyectos">
+                        Proyectos
+                    </NavLink>
+                </div>
+
+                @* NUEVO (4.19): enlace solo para Admin. OJO: ocultarlo es solo                   comodidad visual. La seguridad real está en la Api (exige rol                   Admin) y en la página (Authorize Roles = "Admin"). *@
+                @if (_esAdmin)
+                {
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="usuarios/nuevo">
+                            Crear usuario
+                        </NavLink>
+                    </div>
+                }
+
+                <div class="nav-item px-3">
+                    @* Es un botón (no un enlace) porque ejecuta una acción, no cambia de página por sí solo. *@
+                    <button class="nav-link" @onclick="CerrarSesionAsync">
+                        Cerrar sesión
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="login">
+                        Iniciar sesión
+                    </NavLink>
+                </div>
+            }
+        }
+    </nav>
+</div>
+
+@code {
+    // _cargado: ya consultamos el navegador. _haySesion: resultado de esa consulta.
+    private bool _cargado;
+    private bool _haySesion;
+
+    // NUEVO (4.19): true si la sesión guardada tiene el rol Admin.
+    private bool _esAdmin;
+
+    // Se ejecuta una sola vez cuando el menú aparece por primera vez.
+    protected override async Task OnInitializedAsync()
+    {
+        // Nos suscribimos al aviso que agregamos en ServicioSesion:                // cada vez que alguien entra o sale, se ejecuta ActualizarAsync.
+        Sesion.SesionCambio += AlSesionCambiar;
+
+        await ActualizarAsync();
+    }
+
+    // Consulta si hay sesión y guarda el resultado en _haySesion.
+    private async Task ActualizarAsync()
+    {
+        // NUEVO (4.19): una sola lectura de la sesión nos da las dos respuestas                // (¿hay sesión? y ¿es Admin?), sin consultas extra.
+        var datos = await Sesion.ObtenerSesionAsync();
+        _haySesion = datos is not null;
+        _esAdmin = datos?.Rol == "Admin";
+        _cargado = true;
+    }
+
+    // El evento no es "async", así que lo envolvemos: InvokeAsync asegura que        // el redibujado ocurra en el hilo correcto de Blazor.
+    private void AlSesionCambiar()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ActualizarAsync();
+            StateHasChanged();   // le dice a Blazor: "vuelve a dibujar el menú"
+        });
+    }
+
+    // Botón "Cerrar sesión": borra la sesión y manda a la pantalla de login.
+    private async Task CerrarSesionAsync()
+    {
+        await Sesion.CerrarSesionAsync();
+        Navegador.NavigateTo("login");
+    }
+
+    // Darse de baja del aviso al destruir el menú: evita fugas de memoria        // (importante en celulares modestos).
+    public void Dispose()
+    {
+        Sesion.SesionCambio -= AlSesionCambiar;
+    }
+}

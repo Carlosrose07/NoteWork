@@ -1,0 +1,167 @@
+﻿@* Permite entrar por dos direcciones distintas hacia la misma pantalla *@
+@page "/clientes/nuevo"
+@page "/clientes/editar/{Id:guid}"
+
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Shared.Clientes
+@using NoteWork.Client.Servicios
+
+@attribute [Authorize]
+
+@inject ServicioClientes ServicioClientes
+@* NavigationManager sirve para cambiar de página desde el código (ej. volver a la lista tras guardar) *@
+@inject NavigationManager Navegador
+
+<PageTitle>@(_esNuevo ? "Nuevo Cliente" : "Editar Cliente") - NoteWork</PageTitle>
+
+<h3>@(_esNuevo ? "Nuevo Cliente" : "Editar Cliente")</h3>
+
+@if (_cargando)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    @* 
+      EditForm es el componente de Blazor para formularios. 
+      OnValidSubmit se ejecuta solo si el usuario presiona "Guardar" o la tecla Enter.
+    *@
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+
+        @* Muestra un mensaje de error rojo si falta un dato o la Api rechaza el guardado *@
+        @if (!string.IsNullOrEmpty(_mensajeError))
+        {
+            <div class="alert alert-danger">@_mensajeError</div>
+        }
+
+        <div class="mb-3">
+            <label class="form-label">Nombre *</label>
+            @* @bind-Value conecta la caja de texto directamente con la propiedad Nombre de la clase *@
+            <InputText class="form-control" @bind-Value="_modelo.Nombre" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Teléfono</label>
+            <InputText class="form-control" @bind-Value="_modelo.Telefono" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Dirección</label>
+            <InputText class="form-control" @bind-Value="_modelo.Direccion" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Notas</label>
+            @* InputTextArea es mejor para textos largos porque permite varias líneas *@
+            <InputTextArea class="form-control" @bind-Value="_modelo.Notas" rows="4" />
+        </div>
+
+        <div class="d-flex justify-content-between mt-4">
+            <div>
+                @* Botón de tipo "submit" dispara el OnValidSubmit del EditForm *@
+                <button type="submit" class="btn btn-primary" disabled="@_guardando">
+                    @(_guardando ? "Guardando..." : "Guardar")
+                </button>
+                @* Un simple enlace para cancelar y volver a la lista sin hacer nada *@
+                <a href="/clientes" class="btn btn-secondary ms-2">Cancelar</a>
+            </div>
+
+            @* Solo mostramos el botón de borrar si estamos editando un cliente que ya existe en la base *@
+            @if (!_esNuevo)
+            {
+                <button type="button" class="btn btn-danger" @onclick="BorrarAsync" disabled="@_guardando">
+                    Borrar
+                </button>
+            }
+        </div>
+    </EditForm>
+}
+
+@code {
+    // Recibe el Id desde la dirección (ej. /clientes/editar/1234...). Si es nulo, es que estamos en "nuevo".
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private ClienteGuardarSolicitud _modelo = new();
+    private bool _cargando = false;
+    private bool _guardando = false;
+    private string? _mensajeError;
+
+    // Propiedad calculada rápida para saber si estamos creando o editando
+    private bool _esNuevo => Id == null;
+
+    // Se ejecuta al abrir la pantalla
+    protected override async Task OnInitializedAsync()
+    {
+        // Si no es nuevo, hay que ir a la Api a buscar los datos del cliente
+        if (!_esNuevo)
+        {
+            _cargando = true;
+            var clienteDb = await ServicioClientes.ObtenerPorIdAsync(Id!.Value);
+
+            if (clienteDb != null)
+            {
+                // Llenamos el formulario con los datos de la base de datos
+                _modelo = clienteDb;
+            }
+            else
+            {
+                // Si el cliente no existe (alguien más lo borró), lo devolvemos a la lista
+                Navegador.NavigateTo("/clientes");
+            }
+            _cargando = false;
+        }
+    }
+
+    private async Task GuardarAsync()
+    {
+        // Validación manual básica para no viajar a la Api si el nombre está vacío
+        if (string.IsNullOrWhiteSpace(_modelo.Nombre))
+        {
+            _mensajeError = "El nombre del cliente es obligatorio.";
+            return;
+        }
+
+        _guardando = true;
+        _mensajeError = null;
+
+        (bool Exito, string? Error) resultado;
+
+        // Decidimos a qué método de la Api llamar según si es nuevo o no
+        if (_esNuevo)
+        {
+            resultado = await ServicioClientes.CrearAsync(_modelo);
+        }
+        else
+        {
+            resultado = await ServicioClientes.EditarAsync(Id!.Value, _modelo);
+        }
+
+        // NavigateTo nos devuelve a la lista automáticamente tras guardar con éxito
+        if (resultado.Exito)
+        {
+            Navegador.NavigateTo("/clientes");
+        }
+        else
+        {
+            _mensajeError = resultado.Error;
+            _guardando = false;
+        }
+    }
+
+    private async Task BorrarAsync()
+    {
+        _guardando = true;
+        var exito = await ServicioClientes.BorrarAsync(Id!.Value);
+
+        if (exito)
+        {
+            Navegador.NavigateTo("/clientes");
+        }
+        else
+        {
+            _mensajeError = "No se pudo borrar el cliente.";
+            _guardando = false;
+        }
+    }
+}

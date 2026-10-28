@@ -1,0 +1,38 @@
+﻿@* App.razor: usa AuthorizeRouteView para revisar permisos antes de mostrar una página.
+- Si la página es abierta (como Login): la muestra normal.
+- Si es protegida y NO hay sesión: muestra RedirigirALogin (te manda a /login).
+- Si es protegida, SÍ hay sesión, pero falta el rol: avisa que no tiene permiso.
+- Si es protegida y cumple todo: la muestra normal.
+*@
+@using Microsoft.AspNetCore.Components.Authorization
+@using NoteWork.Client.Layout
+
+<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <NotAuthorized>
+                @* context.User ya está en memoria gracias a ProveedorAutenticacion (cero gasto extra).
+                   IsAuthenticated == true significa: "ya inició sesión, pero no tiene el rol que pide la página". *@
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <RedirigirALogin />
+                }
+                else
+                {
+                    <div class="container mt-4">
+                        <div class="alert alert-warning" role="alert">
+                            No tienes permiso para ver esta página.
+                        </div>
+                        <a href="/" class="btn btn-outline-primary btn-sm">Volver al inicio</a>
+                    </div>
+                }
+            </NotAuthorized>
+            <Authorizing>
+                @* Se ve un instante mientras Blazor lee la sesión del navegador.
+                   Es solo texto: no gasta recursos. *@
+                <p>Cargando...</p>
+            </Authorizing>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+</Router>

@@ -1,0 +1,149 @@
+﻿@page "/proyecto/{ProyectoId:guid}/resumen"
+@inject HttpClient Http
+@inject ServicioNodos ServicioNodos
+@inject IJSRuntime JS
+@using System.Net.Http.Json
+@using Microsoft.JSInterop
+@using NoteWork.Shared.Entidades
+@using NoteWork.Client.Servicios
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Resumen de Cotización</h2>
+        <!-- d-print-none: el botón NO sale en la hoja impresa -->
+        <button class="btn btn-outline-primary d-print-none" @onclick="Imprimir">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
+    </div>
+    <hr />
+
+    @if (cargando)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Obteniendo datos del proyecto...</p>
+        </div>
+    }
+    else if (resumen != null)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-body bg-light text-center">
+                <h3 class="card-title text-success mb-0">Total General: $@resumen.TotalGeneral.ToString("N2")</h3>
+            </div>
+        </div>
+
+        @if (raices.Count == 0)
+        {
+            <div class="alert alert-info">Este proyecto aún no tiene niveles para mostrar.</div>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-3 mb-5">
+                @foreach (var piso in raices.OrderBy(n => n.Orden))
+                {
+                    @RenderNodo(piso, 0)
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="alert alert-danger">No se pudo cargar el resumen del proyecto.</div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ProyectoId { get; set; }
+
+    private bool cargando = true;
+    private ResumenCotizacionTempDto? resumen;
+    private List<NodoDto> raices = new();
+
+    // Le pide al navegador que abra la ventana de impresión (en iPhone permite "Guardar como PDF")
+    private async Task Imprimir()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            resumen = await Http.GetFromJsonAsync<ResumenCotizacionTempDto>($"api/proyectos/{ProyectoId}/resumen");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar el resumen: {ex.Message}");
+        }
+
+        try
+        {
+            var nodos = await ServicioNodos.ObtenerNodosPorProyectoAsync(ProyectoId);
+            raices = ConstruirRaices(nodos ?? new List<NodoDto>());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar los nodos: {ex.Message}");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private static List<NodoDto> ConstruirRaices(List<NodoDto> todos)
+    {
+        if (todos.Any(n => n.Hijos.Count > 0))
+            return todos.Where(n => n.PadreId == null).ToList();
+
+        var porId = todos.ToDictionary(n => n.Id);
+        foreach (var nodo in todos.Where(n => n.PadreId != null))
+        {
+            if (porId.TryGetValue(nodo.PadreId!.Value, out var padre))
+                padre.Hijos.Add(nodo);
+        }
+        return todos.Where(n => n.PadreId == null).ToList();
+    }
+
+    // Dibuja un nodo y, de forma recursiva, sus hijos. Solo lectura.
+    private RenderFragment RenderNodo(NodoDto nodo, int nivel) => __builder =>
+    {
+        var icono = nivel == 0 ? "bi-building" : nivel == 1 ? "bi-house-door" : "bi-bounding-box";
+        var claseTitulo = nivel == 0 ? "fs-5 fw-bold" : nivel == 1 ? "fw-semibold" : "small";
+        var claseMonto = nivel == 0 ? "fs-5 fw-bold text-success" : nivel == 1 ? "fw-semibold text-success" : "small text-success";
+
+        <div>
+            <div class="d-flex justify-content-between align-items-center gap-2 p-2 rounded @(nivel == 0 ? "bg-light border shadow-sm" : "border-bottom")">
+                <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                    <i class="bi @icono"></i>
+                    <div style="min-width:0;">
+                        <div class="@claseTitulo text-break">@nodo.Nombre</div>
+                        @if (nodo.TotalPartidas > 0)
+                        {
+                            <div class="text-muted small">@nodo.TotalPartidas partida(s)</div>
+                        }
+                    </div>
+                </div>
+                <div class="@claseMonto text-nowrap">$@nodo.Subtotal.ToString("N2")</div>
+            </div>
+
+            @if (nodo.Hijos.Count > 0)
+            {
+                <div class="ms-2 ps-2 border-start border-2 mt-1">
+                    @foreach (var hijo in nodo.Hijos.OrderBy(h => h.Orden))
+                    {
+                        @RenderNodo(hijo, nivel + 1)
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    public class ResumenCotizacionTempDto
+    {
+        public decimal TotalGeneral { get; set; }
+    }
+}

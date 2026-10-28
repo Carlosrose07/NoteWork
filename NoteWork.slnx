@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="NoteWork.Api/NoteWork.Api.csproj" />
+  <Project Path="NoteWork.Client/NoteWork.Client.csproj" Id="f0084d92-0bd7-4d29-9101-62f40895da99" />
+  <Project Path="NoteWork.Shared/NoteWork.Shared.csproj" />
+</Solution>

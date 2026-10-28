@@ -1,0 +1,94 @@
+﻿@page "/proyectos"
+@using NoteWork.Shared.Proyecto
+@using NoteWork.Shared.Comun
+@using NoteWork.Client.Servicios
+@inject ServicioProyectos ServicioProyectos
+@inject NavigationManager NavigationManager
+
+<PageTitle>Proyectos</PageTitle>
+
+<h3>Proyectos</h3>
+
+<div class="mb-3">
+    @* Botón para ir al formulario de creación *@
+    <button class="btn btn-primary" @onclick="IrACrearProyecto">Nuevo Proyecto</button>
+</div>
+
+@* Mientras la API responde, proyectos es null *@
+@if (proyectos == null)
+{
+    <p><em>Cargando proyectos...</em></p>
+}
+@* Si ya respondió pero la lista vino vacía *@
+else if (proyectos.Count == 0)
+{
+    <p>No hay proyectos registrados.</p>
+}
+else
+{
+    @* table-responsive evita que la tabla rompa la pantalla en celulares como el iPhone 11 *@
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Cliente</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @* Recorremos la lista de proyectos que extrajimos de PaginaResultado.Items *@
+                @foreach (var proyecto in proyectos)
+                {
+                    <tr>
+                        <td>@proyecto.Nombre</td>
+                        @* Si ClienteNombre es null (porque ClienteId es opcional), mostramos un guion *@
+                        <td>@(proyecto.ClienteNombre ?? "-")</td>
+                        <td>@proyecto.Tipo</td>
+                        <td>@proyecto.Estado</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-info text-white" @onclick="() => IrANodos(proyecto.Id)">Desglose</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => IrAEditar(proyecto.Id)">Editar</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    // Lista donde guardaremos los elementos extraídos de PaginaResultado
+    private List<ProyectoDto>? proyectos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Llamamos a tu servicio que ya sabe cómo hablar con la API y pedir la página 1
+        var resultado = await ServicioProyectos.ObtenerProyectosAsync();
+
+        // Extraemos la propiedad Items (si resultado fuera null por algún fallo, creamos una lista vacía para no romper la pantalla)
+        proyectos = resultado?.Items ?? new List<ProyectoDto>();
+    }
+
+    private void IrACrearProyecto()
+    {
+        // Navega a la ruta configurada en la línea 1 de EditarProyecto.razor
+        NavigationManager.NavigateTo("/proyectos/crear");
+    }
+
+    private void IrAEditar(Guid id)
+    {
+        // Navega a la ruta configurada en la línea 2 de EditarProyecto.razor pasando el Guid
+        NavigationManager.NavigateTo($"/proyectos/editar/{id}");
+    }
+
+    private void IrANodos(Guid id)
+    {
+        // Navega al desglose de Pisos, Apartamentos y Áreas del proyecto
+        NavigationManager.NavigateTo($"/proyectos/{id}/nodos");
+    }
+}

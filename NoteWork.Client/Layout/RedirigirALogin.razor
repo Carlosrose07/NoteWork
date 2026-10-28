@@ -1,0 +1,16 @@
+﻿@* RedirigirALogin (4.16): se muestra cuando alguien intenta abrir una página
+   protegida sin tener sesión. No dibuja nada: solo lo manda a /login. *@
+@inject NavigationManager Navegacion
+
+@code {
+    // OnInitialized se ejecuta una vez, apenas el componente aparece.
+    protected override void OnInitialized()
+    {
+        // forceLoad queda en false (por defecto): Blazor cambia de pantalla
+        // sin recargar toda la app, que es más rápido en celulares modestos.
+        // replace: true hace que /login reemplace la página protegida en el
+        // historial, así el botón "Atrás" del navegador no te devuelve a ella
+        // en un bucle.
+        Navegacion.NavigateTo("login", replace: true);
+    }
+}

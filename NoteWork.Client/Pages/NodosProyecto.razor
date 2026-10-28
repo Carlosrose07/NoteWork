@@ -1,0 +1,292 @@
+﻿@page "/proyectos/{ProyectoId:guid}/nodos"
+@using NoteWork.Shared.Entidades
+@using NoteWork.Shared.Proyecto
+@using NoteWork.Client.Servicios
+@inject ServicioNodos ServicioNodos
+@inject ServicioProyectos ServicioProyectos
+@inject NavigationManager NavigationManager
+
+<PageTitle>Desglose del Proyecto</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-0">@(proyecto?.Nombre ?? "Cargando proyecto...")</h3>
+        <small class="text-muted">Desglose de Pisos, Apartamentos y Áreas</small>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="VolverAProyectos">
+        Volver a Proyectos
+    </button>
+</div>
+
+@if (!string.IsNullOrEmpty(mensajeError))
+{
+    <div class="alert alert-danger">@mensajeError</div>
+}
+
+<div class="mb-3 d-flex gap-2">
+    <button class="btn btn-primary" @onclick="() => AbrirFormularioCrear(null)">
+        + Agregar Nivel Principal
+    </button>
+    <a href="/proyecto/@ProyectoId/resumen" class="btn btn-success shadow-sm">
+        <i class="bi bi-receipt"></i> Ver Resumen General
+    </a>
+</div>
+
+@* Formulario inline (liviano para celulares, sin modales pesados de JS) *@
+@if (mostrandoFormulario)
+{
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            @(nodoEditandoId.HasValue ? "Editar Nivel" : (nombrePadreFormulario != null ? $"Agregar dentro de: {nombrePadreFormulario}" : "Nuevo Nivel Principal"))
+        </div>
+        <div class="card-body">
+            <EditForm Model="modeloFormulario" OnValidSubmit="GuardarNodoAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-2">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Tipo de Nivel</label>
+                        <InputSelect class="form-select" @bind-Value="modeloFormulario.Tipo">
+                            <option value="@TipoNodo.Piso">Piso</option>
+                            <option value="@TipoNodo.Apartamento">Apartamento</option>
+                            <option value="@TipoNodo.Area">Área</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="col-12 col-md-5">
+                        <label class="form-label">Nombre (ej. Piso 1, Apto 1A, Cocina)</label>
+                        <InputText class="form-control" @bind-Value="modeloFormulario.Nombre" />
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Orden</label>
+                        <InputNumber class="form-control" @bind-Value="modeloFormulario.Orden" />
+                    </div>
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-success" disabled="@guardando">
+                        @(guardando ? "Guardando..." : "Guardar")
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarFormulario" disabled="@guardando">
+                        Cancelar
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (nodosRaiz == null)
+{
+    <p><em>Cargando estructura del proyecto...</em></p>
+}
+else if (nodosRaiz.Count == 0)
+{
+    <div class="alert alert-light border">
+        Este proyecto aún no tiene niveles (Pisos, Apartamentos o Áreas) registrados.
+    </div>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var nodo in nodosRaiz)
+        {
+            @RenderizarNodo(nodo, 0)
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid ProyectoId { get; set; }
+
+    private ProyectoEditarDto? proyecto;
+    private List<NodoDto>? nodosRaiz;
+    private string? mensajeError;
+
+    // Estado del formulario de creación / edición
+    private bool mostrandoFormulario = false;
+    private bool guardando = false;
+    private Guid? nodoEditandoId = null;
+    private string? nombrePadreFormulario = null;
+    private NodoGuardarDto modeloFormulario = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        mensajeError = null;
+        proyecto = await ServicioProyectos.ObtenerProyectoPorIdAsync(ProyectoId);
+        nodosRaiz = await ServicioNodos.ObtenerNodosPorProyectoAsync(ProyectoId) ?? new List<NodoDto>();
+    }
+
+    private RenderFragment RenderizarNodo(NodoDto nodo, int nivelProfundidad) => __builder =>
+    {
+        var sangriaPx = nivelProfundidad * 20;
+
+        <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2" style="padding-left: @(sangriaPx + 16)px;">
+            <div>
+                <span class="badge @ObtenerClaseBadge(nodo.Tipo) me-2">@nodo.Tipo</span>
+                <strong>@nodo.Nombre</strong>
+                @* Ahora mostramos el conteo de partidas en TODOS los niveles *@
+                <small class="text-muted ms-2">(@nodo.TotalPartidas partidas)</small>
+            </div>
+
+            <div class="d-flex align-items-center gap-3">
+                @* NUEVO: Mostramos el Subtotal acumulado en color verde *@
+                <strong class="text-success" style="font-size: 1.1em;">
+                    $@nodo.Subtotal.ToString("N2")
+                </strong>
+
+                <div class="btn-group btn-group-sm">
+                    @if (nodo.Tipo == TipoNodo.Area)
+                    {
+                        <button class="btn btn-outline-success" @onclick="() => IrAPartidas(nodo.Id)">
+                            Partidas
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-primary" @onclick="() => AbrirFormularioCrear(nodo)">
+                            + Subnivel
+                        </button>
+                    }
+                    <button class="btn btn-outline-secondary" @onclick="() => AbrirFormularioEditar(nodo)">
+                        Editar
+                    </button>
+                    <button class="btn btn-outline-danger" @onclick="() => EliminarNodoAsync(nodo.Id)">
+                        Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @if (nodo.Hijos != null && nodo.Hijos.Count > 0)
+        {
+            foreach (var hijo in nodo.Hijos)
+            {
+                @RenderizarNodo(hijo, nivelProfundidad + 1)
+            }
+        }
+    };
+
+    private string ObtenerClaseBadge(TipoNodo tipo) => tipo switch
+    {
+        TipoNodo.Piso => "bg-dark",
+        TipoNodo.Apartamento => "bg-info text-dark",
+        TipoNodo.Area => "bg-success",
+        _ => "bg-secondary"
+    };
+
+    private void AbrirFormularioCrear(NodoDto? padre)
+    {
+        mensajeError = null;
+        nodoEditandoId = null;
+        nombrePadreFormulario = padre?.Nombre;
+
+        // Sugerimos el siguiente tipo lógico según el padre
+        var tipoSugerido = padre == null
+            ? (proyecto?.Tipo == TipoProyecto.Edificio ? TipoNodo.Piso : TipoNodo.Area)
+            : (padre.Tipo == TipoNodo.Piso ? TipoNodo.Apartamento : TipoNodo.Area);
+
+        modeloFormulario = new NodoGuardarDto
+        {
+            ProyectoId = ProyectoId,
+            PadreId = padre?.Id,
+            Tipo = tipoSugerido,
+            Nombre = string.Empty,
+            Orden = (padre?.Hijos.Count ?? nodosRaiz?.Count ?? 0) + 1
+        };
+
+        mostrandoFormulario = true;
+    }
+
+    private void AbrirFormularioEditar(NodoDto nodo)
+    {
+        mensajeError = null;
+        nodoEditandoId = nodo.Id;
+        nombrePadreFormulario = null;
+
+        modeloFormulario = new NodoGuardarDto
+        {
+            ProyectoId = nodo.ProyectoId,
+            PadreId = nodo.PadreId,
+            Tipo = nodo.Tipo,
+            Nombre = nodo.Nombre,
+            Orden = nodo.Orden
+        };
+
+        mostrandoFormulario = true;
+    }
+
+    private void CerrarFormulario()
+    {
+        mostrandoFormulario = false;
+        nodoEditandoId = null;
+        nombrePadreFormulario = null;
+    }
+
+    private async Task GuardarNodoAsync()
+    {
+        guardando = true;
+        mensajeError = null;
+
+        if (nodoEditandoId.HasValue)
+        {
+            var (exito, error) = await ServicioNodos.EditarNodoAsync(nodoEditandoId.Value, modeloFormulario);
+            if (exito)
+            {
+                mostrandoFormulario = false;
+                await CargarDatosAsync();
+            }
+            else
+            {
+                mensajeError = error;
+            }
+        }
+        else
+        {
+            var (exito, error) = await ServicioNodos.CrearNodoAsync(modeloFormulario);
+            if (exito)
+            {
+                mostrandoFormulario = false;
+                await CargarDatosAsync();
+            }
+            else
+            {
+                mensajeError = error;
+            }
+        }
+
+        guardando = false;
+    }
+
+    private async Task EliminarNodoAsync(Guid id)
+    {
+        mensajeError = null;
+        var (exito, error) = await ServicioNodos.EliminarNodoAsync(id);
+        if (exito)
+        {
+            await CargarDatosAsync();
+        }
+        else
+        {
+            mensajeError = error;
+        }
+    }
+
+    private void IrAPartidas(Guid nodoId)
+    {
+        NavigationManager.NavigateTo($"/nodos/{nodoId}/partidas");
+    }
+
+    private void VolverAProyectos()
+    {
+        NavigationManager.NavigateTo("/proyectos");
+    }
+}

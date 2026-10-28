@@ -1,0 +1,133 @@
+﻿@page "/proyectos/crear"
+@page "/proyectos/editar/{Id:guid}"
+
+@using NoteWork.Shared.Proyecto
+@using NoteWork.Shared.Entidades
+@using NoteWork.Shared.Clientes
+@using NoteWork.Client.Servicios
+
+@inject ServicioProyectos ServicioProyectos
+@inject ServicioClientes ApiClientes
+@inject NavigationManager Navegador
+
+<h3>@(EsEdicion ? "Editar Proyecto" : "Nuevo Proyecto")</h3>
+
+<EditForm Model="modelo" OnValidSubmit="GuardarAsync">
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+        <label class="form-label">Nombre del proyecto</label>
+        <InputText @bind-Value="modelo.Nombre" class="form-control" />
+        <ValidationMessage For="@(() => modelo.Nombre)" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Cliente (Opcional)</label>
+        <InputSelect @bind-Value="modelo.ClienteId" class="form-select">
+            <option value="">-- Sin cliente asignado --</option>
+            @foreach (var cliente in clientes)
+            {
+                <option value="@cliente.Id">@cliente.Nombre</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => modelo.ClienteId)" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Tipo de Proyecto</label>
+        <InputSelect @bind-Value="modelo.Tipo" class="form-select">
+            @foreach (var tipo in Enum.GetValues<TipoProyecto>())
+            {
+                <option value="@tipo">@tipo.ToString()</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => modelo.Tipo)" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Estado</label>
+        <InputSelect @bind-Value="modelo.Estado" class="form-select">
+            @foreach (var estado in Enum.GetValues<EstadoProyecto>())
+            {
+                <option value="@estado">@estado.ToString()</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => modelo.Estado)" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Unidad de Medida</label>
+        <InputSelect @bind-Value="modelo.UnidadMedida" class="form-select">
+            @foreach (var unidad in Enum.GetValues<UnidadMedida>())
+            {
+                <option value="@unidad">@unidad.ToString()</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => modelo.UnidadMedida)" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Notas</label>
+        <InputTextArea @bind-Value="modelo.Notas" class="form-control" />
+        <ValidationMessage For="@(() => modelo.Notas)" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+</EditForm>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool EsEdicion => Id.HasValue;
+    
+    private ProyectoEditarDto modelo = new();
+    private List<ClienteResumen> clientes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var paginaClientes = await ApiClientes.ObtenerClientesAsync(1, 100);
+        
+        if (paginaClientes != null && paginaClientes.Items != null)
+        {
+            clientes = paginaClientes.Items.ToList();
+        }
+
+        if (Id.HasValue)
+        {
+            var proyecto = await ServicioProyectos.ObtenerProyectoPorIdAsync(Id.Value);
+            if (proyecto is not null)
+            {
+                modelo = proyecto;
+            }
+        }
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (Id.HasValue)
+        {
+            await ServicioProyectos.EditarProyectoAsync(Id.Value, modelo);
+        }
+        else
+        {
+            var crearDto = new ProyectoCrearDto
+            {
+                Nombre = modelo.Nombre,
+                ClienteId = modelo.ClienteId,
+                Notas = modelo.Notas,
+                Tipo = modelo.Tipo,
+                Estado = modelo.Estado,
+                UnidadMedida = modelo.UnidadMedida
+            };
+            await ServicioProyectos.CrearProyectoAsync(crearDto);
+        }
+        
+        Navegador.NavigateTo("proyectos");
+    }
+
+    private void Cancelar()
+    {
+        Navegador.NavigateTo("proyectos");
+    }
+}

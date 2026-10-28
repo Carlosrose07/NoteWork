@@ -1,0 +1,118 @@
+﻿@page "/login"
+@* La línea de arriba dice: "esta pantalla vive en la dirección /login". *@
+@using System.ComponentModel.DataAnnotations
+@using NoteWork.Client.Servicios
+@using NoteWork.Shared.Cuenta
+@* @inject = "Blazor, entrégame estas herramientas ya armadas" (las registramos en Program.cs). *@
+@inject ServicioSesion Sesion
+@inject NavigationManager Navegacion
+
+<PageTitle>Iniciar sesión</PageTitle>
+
+@* Mientras revisamos si ya hay sesión activa, no dibujamos el formulario
+   para evitar un parpadeo en celulares modestos. *@
+@if (!verificando)
+{
+    <div class="container" style="max-width: 420px;">
+        <h1 class="h3 mb-3">Iniciar sesión</h1>
+
+        @* EditForm = formulario de Blazor. OnValidSubmit se ejecuta SOLO si los datos
+           pasan las validaciones (así no viajamos a la Api con datos vacíos).
+           DataAnnotationsValidator activa los [Required] y [EmailAddress] de abajo. *@
+        <EditForm Model="formulario" OnValidSubmit="IniciarSesion">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="email" class="form-label">Correo</label>
+                @* @bind-Value conecta la casilla con formulario.Email: lo que el usuario
+                   escribe se guarda solo. autocomplete ayuda al celular a ofrecer el correo guardado. *@
+                <InputText id="email" type="email" class="form-control"
+                           autocomplete="username" @bind-Value="formulario.Email" />
+                <ValidationMessage For="() => formulario.Email" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Contraseña</label>
+                <InputText id="password" type="password" class="form-control"
+                           autocomplete="current-password" @bind-Value="formulario.Password" />
+                <ValidationMessage For="() => formulario.Password" />
+            </div>
+
+            @* Mensaje de error del servicio (ej. "Correo o contraseña incorrectos."). *@
+            @if (error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@error</div>
+            }
+
+            @* disabled="@enviando": mientras la petición está en camino el botón se
+               bloquea, así un toque doble en el celular no envía el login dos veces. *@
+            <button type="submit" class="btn btn-primary w-100" disabled="@enviando">
+                @(enviando ? "Entrando..." : "Entrar")
+            </button>
+        </EditForm>
+    </div>
+}
+
+@code {
+    private readonly FormularioLogin formulario = new();
+    private string? error;
+    private bool enviando;
+
+    // Empieza en true mientras revisamos localStorage; si no hay sesión pasa a false y muestra el formulario.
+    private bool verificando = true;
+
+    // Se ejecuta al entrar a /login. Si ya hay sesión guardada, manda directo a Inicio (/).
+    protected override async Task OnInitializedAsync()
+    {
+        var datos = await Sesion.ObtenerSesionAsync();
+        if (datos is not null)
+        {
+            // replace: true reemplaza /login en el historial para que el botón Atrás no vuelva aquí.
+            Navegacion.NavigateTo("/", replace: true);
+            return;
+        }
+
+        verificando = false;
+    }
+
+    private async Task IniciarSesion()
+    {
+        enviando = true;
+        error = null;
+
+        // Armamos la solicitud que la Api espera (la clase de Shared).
+        var solicitud = new LoginSolicitud
+        {
+            Email = formulario.Email.Trim(),   // quita espacios sobrantes al copiar/pegar
+            Password = formulario.Password     // la contraseña NO se recorta: los espacios cuentan
+        };
+
+        // Toda la lógica (Api + guardar el token) está en ServicioSesion.
+        var (exito, mensaje) = await Sesion.IniciarSesionAsync(solicitud);
+
+        if (exito)
+        {
+            // Sesión guardada: vamos a la pantalla de inicio reemplazando /login en el historial.
+            Navegacion.NavigateTo("/", replace: true);
+            return;
+        }
+
+        error = mensaje;
+        enviando = false;   // se desbloquea el botón para reintentar
+    }
+
+    // ¿Por qué no usamos LoginSolicitud directamente en el formulario?
+    // Porque sus propiedades son "init" (solo se asignan al crearla), y el
+    // formulario necesita poder CAMBIARLAS mientras el usuario escribe.
+    // Esta clase pequeña tiene las mismas reglas de validación y se
+    // convierte a LoginSolicitud al enviar.
+    private class FormularioLogin
+    {
+        [Required(ErrorMessage = "El correo es obligatorio.")]
+        [EmailAddress(ErrorMessage = "El correo no tiene un formato válido.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "La contraseña es obligatoria.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

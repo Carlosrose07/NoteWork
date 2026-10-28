@@ -1,0 +1,131 @@
+﻿@page "/clientes"
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Shared.Clientes
+@using NoteWork.Client.Servicios
+
+@* Atributo para exigir que solo usuarios con sesión iniciada puedan ver esta pantalla *@
+@attribute [Authorize]
+
+@* Inyectamos el servicio que acabamos de registrar en Program.cs para poder usarlo abajo *@
+@inject ServicioClientes ServicioClientes
+
+<PageTitle>Clientes - NoteWork</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Clientes</h3>
+    <a href="/clientes/nuevo" class="btn btn-primary">Nuevo Cliente</a>
+</div>
+
+<div class="input-group mb-3">
+    @* 
+      @bind="_terminoBusqueda": conecta la variable con lo que escribe el usuario.
+      @bind:event="oninput": hace que la variable se actualice letra por letra mientras escribe.
+      @onkeyup="ManejarEnter": vigila si el usuario presiona la tecla Enter para buscar de una vez.
+    *@
+    <input type="text" class="form-control" placeholder="Buscar por nombre..."
+           @bind="_terminoBusqueda" @bind:event="oninput" @onkeyup="ManejarEnter" />
+    <button class="btn btn-outline-secondary" type="button" @onclick="BuscarAsync">Buscar</button>
+</div>
+
+@if (_cargando && !_clientes.Any())
+{
+    <p><em>Cargando clientes...</em></p>
+}
+else if (!_clientes.Any())
+{
+    <p>No se encontraron clientes.</p>
+}
+else
+{
+    @* 
+      Rendimiento: Usamos list-group en lugar de una tabla (<table>) tradicional.
+      Las tablas obligan a hacer scroll horizontal en pantallas pequeñas.
+      Una lista apilada se adapta al ancho de cualquier celular y es más fácil de tocar.
+    *@
+    <div class="list-group mb-3">
+        @foreach (var cliente in _clientes)
+        {
+            <a href="/clientes/editar/@cliente.Id" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">@cliente.Nombre</h5>
+                </div>
+                <small class="text-muted">@(string.IsNullOrWhiteSpace(cliente.Telefono) ? "Sin teléfono" : cliente.Telefono)</small>
+            </a>
+        }
+    </div>
+
+    @* Solo mostramos el botón si la Api nos dijo que quedan más registros por descargar *@
+    @if (_hayMas)
+    {
+        <div class="text-center mb-4">
+            @* disabled="@_cargando": Apaga el botón mientras carga para evitar dobles clics accidentales *@
+            <button class="btn btn-secondary" @onclick="CargarMasAsync" disabled="@_cargando">
+                @(_cargando ? "Cargando..." : "Cargar más")
+            </button>
+        </div>
+    }
+}
+
+@code {
+    private List<ClienteResumen> _clientes = new();
+    private bool _cargando = true;
+    private int _paginaActual = 1;
+    private bool _hayMas = false;
+    private string _terminoBusqueda = "";
+
+    // Tope fijo para no saturar la memoria del celular al descargar muchos datos de golpe.
+    private const int TamanoPagina = 20;
+
+    // Se ejecuta automáticamente al entrar a la pantalla por primera vez.
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientesAsync(reiniciar: true);
+    }
+
+    // Método central que pide los datos al servicio.
+    // Si reiniciar = true (ej. buscar o al entrar), vacía la lista y arranca en la página 1.
+    // Si reiniciar = false (ej. "Cargar más"), mantiene los que ya están y suma la siguiente página.
+    private async Task CargarClientesAsync(bool reiniciar = false)
+    {
+        _cargando = true;
+
+        if (reiniciar)
+        {
+            _paginaActual = 1;
+            _clientes.Clear();
+        }
+
+        var resultado = await ServicioClientes.ObtenerClientesAsync(_paginaActual, TamanoPagina, _terminoBusqueda);
+
+        if (resultado != null)
+        {
+            // AddRange suma los nuevos elementos al final de la lista visual
+            _clientes.AddRange(resultado.Items);
+
+            // PaginaResultado ya calculó si quedan más en base al total de la BD
+            _hayMas = resultado.HayMas;
+        }
+
+        _cargando = false;
+    }
+
+    private async Task BuscarAsync()
+    {
+        await CargarClientesAsync(reiniciar: true);
+    }
+
+    private async Task ManejarEnter(KeyboardEventArgs e)
+    {
+        // Muy útil en celulares: reacciona cuando presionas el botón "Ir" o "Enter" del teclado virtual.
+        if (e.Key == "Enter")
+        {
+            await BuscarAsync();
+        }
+    }
+
+    private async Task CargarMasAsync()
+    {
+        _paginaActual++;
+        await CargarClientesAsync(reiniciar: false);
+    }
+}
