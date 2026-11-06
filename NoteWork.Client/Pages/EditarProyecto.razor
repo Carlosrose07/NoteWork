@@ -12,118 +12,229 @@
 
 <h3>@(EsEdicion ? "Editar Proyecto" : "Nuevo Proyecto")</h3>
 
-<EditForm Model="modelo" OnValidSubmit="GuardarAsync">
-    <DataAnnotationsValidator />
+@* ---- Estado 1: cargando los datos ---- *@
+@if (cargando)
+{
+    <p>Cargando…</p>
+}
+@* ---- Estado 2: falló la carga (404, sin señal, sesión vencida). Hallazgo 3.4 ---- *@
+else if (errorCarga is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorCarga</div>
 
-    <div class="mb-3">
-        <label class="form-label">Nombre del proyecto</label>
-        <InputText @bind-Value="modelo.Nombre" class="form-control" />
-        <ValidationMessage For="@(() => modelo.Nombre)" />
-    </div>
+    <button type="button" class="btn btn-primary" @onclick="CargarAsync">Reintentar</button>
+    @if (errorCarga == ErroresApi.SesionVencida)
+    {
+        <button type="button" class="btn btn-outline-primary" @onclick="IrALogin">Iniciar sesión</button>
+    }
+    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Volver</button>
+}
+@* ---- Estado 3: formulario normal ---- *@
+else
+{
+    @if (advertenciaClientes is not null)
+    {
+        <div class="alert alert-warning" role="alert">@advertenciaClientes</div>
+    }
 
-    <div class="mb-3">
-        <label class="form-label">Cliente (Opcional)</label>
-        <InputSelect @bind-Value="modelo.ClienteId" class="form-select">
-            <option value="">-- Sin cliente asignado --</option>
-            @foreach (var cliente in clientes)
+    <EditForm Model="modelo" OnValidSubmit="GuardarAsync">
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label class="form-label">Nombre del proyecto</label>
+            <InputText @bind-Value="modelo.Nombre" class="form-control" />
+            <ValidationMessage For="@(() => modelo.Nombre)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Cliente (Opcional)</label>
+            <InputSelect @bind-Value="modelo.ClienteId" class="form-select">
+                <option value="">-- Sin cliente asignado --</option>
+                @foreach (var cliente in clientes)
+                {
+                    <option value="@cliente.Id">@cliente.Nombre</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => modelo.ClienteId)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Tipo de Proyecto</label>
+            <InputSelect @bind-Value="modelo.Tipo" class="form-select">
+                @foreach (var tipo in Enum.GetValues<TipoProyecto>())
+                {
+                    <option value="@tipo">@tipo.ToString()</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => modelo.Tipo)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Estado</label>
+            <InputSelect @bind-Value="modelo.Estado" class="form-select">
+                @foreach (var estado in Enum.GetValues<EstadoProyecto>())
+                {
+                    <option value="@estado">@estado.ToString()</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => modelo.Estado)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Unidad de Medida</label>
+            <InputSelect @bind-Value="modelo.UnidadMedida" class="form-select">
+                @foreach (var unidad in Enum.GetValues<UnidadMedida>())
+                {
+                    <option value="@unidad">@unidad.ToString()</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => modelo.UnidadMedida)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Notas</label>
+            <InputTextArea @bind-Value="modelo.Notas" class="form-control" />
+            <ValidationMessage For="@(() => modelo.Notas)" />
+        </div>
+
+        @* Error al guardar: se muestra AQUÍ, sin salir de la pantalla, para no perder lo escrito (hallazgo 3.1) *@
+        @if (errorGuardar is not null)
+        {
+            <div class="alert alert-danger" role="alert">@errorGuardar</div>
+            @if (errorGuardar == ErroresApi.SesionVencida)
             {
-                <option value="@cliente.Id">@cliente.Nombre</option>
+                <p>Tus datos siguen en pantalla. Inicia sesión en otra pestaña y vuelve a tocar Guardar.</p>
             }
-        </InputSelect>
-        <ValidationMessage For="@(() => modelo.ClienteId)" />
-    </div>
+        }
 
-    <div class="mb-3">
-        <label class="form-label">Tipo de Proyecto</label>
-        <InputSelect @bind-Value="modelo.Tipo" class="form-select">
-            @foreach (var tipo in Enum.GetValues<TipoProyecto>())
-            {
-                <option value="@tipo">@tipo.ToString()</option>
-            }
-        </InputSelect>
-        <ValidationMessage For="@(() => modelo.Tipo)" />
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Estado</label>
-        <InputSelect @bind-Value="modelo.Estado" class="form-select">
-            @foreach (var estado in Enum.GetValues<EstadoProyecto>())
-            {
-                <option value="@estado">@estado.ToString()</option>
-            }
-        </InputSelect>
-        <ValidationMessage For="@(() => modelo.Estado)" />
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Unidad de Medida</label>
-        <InputSelect @bind-Value="modelo.UnidadMedida" class="form-select">
-            @foreach (var unidad in Enum.GetValues<UnidadMedida>())
-            {
-                <option value="@unidad">@unidad.ToString()</option>
-            }
-        </InputSelect>
-        <ValidationMessage For="@(() => modelo.UnidadMedida)" />
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Notas</label>
-        <InputTextArea @bind-Value="modelo.Notas" class="form-control" />
-        <ValidationMessage For="@(() => modelo.Notas)" />
-    </div>
-
-    <button type="submit" class="btn btn-primary">Guardar</button>
-    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
-</EditForm>
+        @* disabled="@guardando": evita el doble toque que antes creaba proyectos duplicados *@
+        <button type="submit" class="btn btn-primary" disabled="@guardando">
+            @(guardando ? "Guardando…" : "Guardar")
+        </button>
+        <button type="button" class="btn btn-secondary" @onclick="Cancelar" disabled="@guardando">Cancelar</button>
+    </EditForm>
+}
 
 @code {
     [Parameter] public Guid? Id { get; set; }
 
     private bool EsEdicion => Id.HasValue;
-    
+
     private ProyectoEditarDto modelo = new();
     private List<ClienteResumen> clientes = new();
 
+    // Banderas de estado de la pantalla
+    private bool cargando = true;          // true mientras se piden los datos
+    private bool guardando;                // true mientras se envía el guardado (bloquea el doble toque)
+    private string? errorCarga;            // mensaje si no se pudo cargar el proyecto
+    private string? errorGuardar;          // mensaje si no se pudo guardar
+    private string? advertenciaClientes;   // mensaje si no se pudo cargar la lista de clientes
+
     protected override async Task OnInitializedAsync()
     {
-        var paginaClientes = await ApiClientes.ObtenerClientesAsync(1, 100);
-        
-        if (paginaClientes != null && paginaClientes.Items != null)
-        {
-            clientes = paginaClientes.Items.ToList();
-        }
+        await CargarAsync();
+    }
 
-        if (Id.HasValue)
+    /// <summary>
+    /// Carga la lista de clientes y, si es edición, el proyecto.
+    /// También la usa el botón "Reintentar". try/finally garantiza que "cargando"
+    /// siempre termine y la pantalla nunca se quede en "Cargando…" (hallazgo 3.4).
+    /// </summary>
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        errorCarga = null;
+        advertenciaClientes = null;
+
+        try
         {
-            var proyecto = await ServicioProyectos.ObtenerProyectoPorIdAsync(Id.Value);
-            if (proyecto is not null)
+            // El servicio de clientes ya no lanza excepciones: si falla devuelve una página vacía
+            // y deja el motivo en UltimoError.
+            var paginaClientes = await ApiClientes.ObtenerClientesAsync(1, 100);
+            if (ApiClientes.UltimoError is not null)
             {
-                modelo = proyecto;
+                advertenciaClientes = "No se pudo cargar la lista de clientes. " + ApiClientes.UltimoError;
             }
+            else if (paginaClientes.Items is not null)
+            {
+                clientes = paginaClientes.Items.ToList();
+            }
+
+            if (Id.HasValue)
+            {
+                var proyecto = await ServicioProyectos.ObtenerProyectoPorIdAsync(Id.Value);
+                if (proyecto is null)
+                {
+                    // 404, sin señal o sesión vencida: mostramos el motivo real en vez de un formulario vacío.
+                    errorCarga = ServicioProyectos.UltimoError ?? "No se pudo cargar el proyecto.";
+                }
+                else
+                {
+                    modelo = proyecto;
+                }
+            }
+        }
+        finally
+        {
+            cargando = false;
         }
     }
 
+    /// <summary>
+    /// Se ejecuta solo si el formulario pasó la validación local.
+    /// Lee el resultado del servicio y SOLO vuelve a la lista si se guardó (hallazgo 3.1).
+    /// </summary>
     private async Task GuardarAsync()
     {
-        if (Id.HasValue)
+        // Segunda defensa contra el doble toque (la primera es el botón deshabilitado).
+        // También cubre enviar el formulario con la tecla Enter.
+        if (guardando) return;
+
+        guardando = true;
+        errorGuardar = null;
+
+        try
         {
-            await ServicioProyectos.EditarProyectoAsync(Id.Value, modelo);
-        }
-        else
-        {
-            var crearDto = new ProyectoCrearDto
+            bool exito;
+            string? error;
+
+            if (Id.HasValue)
             {
-                Nombre = modelo.Nombre,
-                ClienteId = modelo.ClienteId,
-                Notas = modelo.Notas,
-                Tipo = modelo.Tipo,
-                Estado = modelo.Estado,
-                UnidadMedida = modelo.UnidadMedida
-            };
-            await ServicioProyectos.CrearProyectoAsync(crearDto);
+                (exito, error) = await ServicioProyectos.EditarProyectoAsync(Id.Value, modelo);
+            }
+            else
+            {
+                var crearDto = new ProyectoCrearDto
+                {
+                    Nombre = modelo.Nombre,
+                    ClienteId = modelo.ClienteId,
+                    Notas = modelo.Notas,
+                    Tipo = modelo.Tipo,
+                    Estado = modelo.Estado,
+                    UnidadMedida = modelo.UnidadMedida
+                };
+                (exito, error) = await ServicioProyectos.CrearProyectoAsync(crearDto);
+            }
+
+            if (exito)
+            {
+                Navegador.NavigateTo("proyectos");
+                return;
+            }
+
+            // Falló: nos quedamos aquí con lo que el usuario escribió y mostramos el motivo.
+            errorGuardar = error ?? "No se pudo guardar el proyecto.";
         }
-        
-        Navegador.NavigateTo("proyectos");
+        finally
+        {
+            // Pase lo que pase, el botón se vuelve a habilitar.
+            guardando = false;
+        }
+    }
+
+    private void IrALogin()
+    {
+        Navegador.NavigateTo("login");
     }
 
     private void Cancelar()
