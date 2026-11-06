@@ -4,6 +4,8 @@
 @using NoteWork.Client.Servicios
 @inject ServicioProyectos ServicioProyectos
 @inject NavigationManager NavigationManager
+@* NUEVO: IJSRuntime nos permite mostrar el cuadro de confirmación nativo del navegador (ligero, funciona en iPhone) *@
+@inject IJSRuntime JS
 
 <PageTitle>Proyectos</PageTitle>
 
@@ -13,6 +15,12 @@
     @* Botón para ir al formulario de creación *@
     <button class="btn btn-primary" @onclick="IrACrearProyecto">Nuevo Proyecto</button>
 </div>
+
+@* NUEVO: mensaje de error si falla la eliminación (se muestra solo cuando hay texto) *@
+@if (!string.IsNullOrEmpty(mensajeError))
+{
+    <div class="alert alert-danger">@mensajeError</div>
+}
 
 @* Mientras la API responde, proyectos es null *@
 @if (proyectos == null)
@@ -49,9 +57,17 @@ else
                         <td>@proyecto.Tipo</td>
                         <td>@proyecto.Estado</td>
                         <td>
-                            <div class="d-flex gap-1">
+                            @* flex-wrap: si no caben los 3 botones en la pantalla del celular, bajan a otra línea *@
+                            <div class="d-flex flex-wrap gap-1">
                                 <button class="btn btn-sm btn-info text-white" @onclick="() => IrANodos(proyecto.Id)">Desglose</button>
                                 <button class="btn btn-sm btn-secondary" @onclick="() => IrAEditar(proyecto.Id)">Editar</button>
+                                @* NUEVO: botón Eliminar. Se desactiva mientras ese proyecto se está eliminando
+                                   para evitar dobles toques en el celular *@
+                                <button class="btn btn-sm btn-danger"
+                                        disabled="@(eliminandoId == proyecto.Id)"
+                                        @onclick="() => EliminarProyecto(proyecto)">
+                                    @(eliminandoId == proyecto.Id ? "Eliminando..." : "Eliminar")
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -64,6 +80,12 @@ else
 @code {
     // Lista donde guardaremos los elementos extraídos de PaginaResultado
     private List<ProyectoDto>? proyectos;
+
+    // NUEVO: Id del proyecto que se está eliminando en este momento (null = ninguno)
+    private Guid? eliminandoId;
+
+    // NUEVO: texto del error que se muestra arriba de la tabla
+    private string? mensajeError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,5 +112,46 @@ else
     {
         // Navega al desglose de Pisos, Apartamentos y Áreas del proyecto
         NavigationManager.NavigateTo($"/proyectos/{id}/nodos");
+    }
+
+    // NUEVO: elimina un proyecto después de pedir confirmación
+    private async Task EliminarProyecto(ProyectoDto proyecto)
+    {
+        mensajeError = null;
+
+        // 1. Cuadro de confirmación nativo. Si el usuario toca "Cancelar", no hacemos nada.
+        var confirmado = await JS.InvokeAsync<bool>("confirm",
+            $"¿Eliminar el proyecto \"{proyecto.Nombre}\"?");
+        if (!confirmado) return;
+
+        // 2. Marcamos este proyecto como "eliminando" (desactiva su botón)
+        eliminandoId = proyecto.Id;
+
+        try
+        {
+            // 3. Llamamos a la Api (DELETE api/proyectos/{id}). Devuelve true si salió bien.
+            var exito = await ServicioProyectos.EliminarProyectoAsync(proyecto.Id);
+
+            if (exito)
+            {
+                // 4. Lo quitamos de la lista en pantalla sin volver a pedir todo a la Api
+                //    (más rápido y ligero para el iPhone 11)
+                proyectos?.Remove(proyecto);
+            }
+            else
+            {
+                mensajeError = "No se pudo eliminar el proyecto. Intenta de nuevo.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // La Api en Render se duerme tras 15 min sin uso: el primer intento puede fallar
+            mensajeError = "No se pudo conectar con el servidor. Espera unos segundos e intenta de nuevo.";
+        }
+        finally
+        {
+            // 5. Siempre reactivamos el botón al terminar, salga bien o mal
+            eliminandoId = null;
+        }
     }
 }

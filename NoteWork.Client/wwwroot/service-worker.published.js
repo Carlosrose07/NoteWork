@@ -8,8 +8,8 @@ self.addEventListener('fetch', event => event.respondWith(onFetch(event)));
 
 const cacheNamePrefix = 'offline-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
-const offlineAssetsInclude = [ /\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.blat$/, /\.dat$/, /\.webmanifest$/ ];
-const offlineAssetsExclude = [ /^service-worker\.js$/ ];
+const offlineAssetsInclude = [/\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.blat$/, /\.dat$/, /\.webmanifest$/];
+const offlineAssetsExclude = [/^service-worker\.js$/];
 
 // Replace with your base path if you are hosting on a subfolder. Ensure there is a trailing '/'.
 const base = "/";
@@ -37,6 +37,23 @@ async function onActivate(event) {
         .map(key => caches.delete(key)));
 }
 
+// CORRECCIÓN: Cloudflare redirige /index.html hacia "/", y la copia guardada queda
+// marcada como "redirected". El navegador NO acepta servir una respuesta así como
+// página y lanza el error "a redirected response was used for a request whose
+// redirect mode is not follow". Esta función crea una copia limpia (mismo contenido,
+// mismas cabeceras) sin esa marca, y ya se puede servir sin problema.
+async function limpiarRedireccion(response) {
+    if (!response || !response.redirected) {
+        return response; // No tiene la marca: se devuelve tal cual
+    }
+    const body = await response.blob();
+    return new Response(body, {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText
+    });
+}
+
 async function onFetch(event) {
     let cachedResponse = null;
     if (event.request.method === 'GET') {
@@ -49,6 +66,9 @@ async function onFetch(event) {
         const request = shouldServeIndexHtml ? 'index.html' : event.request;
         const cache = await caches.open(cacheName);
         cachedResponse = await cache.match(request);
+
+        // CORRECCIÓN: limpiar la marca de redirección antes de servir la copia guardada
+        cachedResponse = await limpiarRedireccion(cachedResponse);
     }
 
     return cachedResponse || fetch(event.request);
