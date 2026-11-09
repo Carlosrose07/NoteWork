@@ -73,6 +73,38 @@ public class AppDbContext : IdentityDbContext<Usuario, IdentityRole<Guid>, Guid>
 
         // La cantidad no es dinero, pero es decimal (ej. 2.5 láminas).
         modelBuilder.Entity<Partida>().Property(p => p.Cantidad).HasPrecision(18, 3);
+
+        // --- LÍMITES DE LONGITUD (CAMBIO A2, hallazgo 4.3) ---
+        // Antes todas las columnas de texto eran "text" sin límite: alguien podía guardar
+        // un texto de varios MB. Estos números DEBEN coincidir con los DTO de NoteWork.Shared
+        // (si cambias uno, cambia el otro). HasMaxLength convierte "text" en "character varying(N)".
+        modelBuilder.Entity<Cliente>(e =>
+        {
+            e.Property(c => c.Nombre).HasMaxLength(150);
+            e.Property(c => c.Telefono).HasMaxLength(30);
+            e.Property(c => c.Direccion).HasMaxLength(300);
+            e.Property(c => c.Notas).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<Proyecto>(e =>
+        {
+            e.Property(p => p.Nombre).HasMaxLength(150);
+            e.Property(p => p.Notas).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<Nodo>(e =>
+        {
+            e.Property(n => n.Nombre).HasMaxLength(150);
+        });
+
+        modelBuilder.Entity<Partida>(e =>
+        {
+            e.Property(p => p.Descripcion).HasMaxLength(300);
+            e.Property(p => p.Especificacion).HasMaxLength(500);
+            e.Property(p => p.Material).HasMaxLength(150);
+            e.Property(p => p.Marca).HasMaxLength(150);
+            e.Property(p => p.NotaInterna).HasMaxLength(500);
+        });
     }
 
     // --- GUARDADO: fechas automáticas y borrado lógico ---

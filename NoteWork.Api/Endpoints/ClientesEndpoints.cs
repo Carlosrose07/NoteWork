@@ -13,6 +13,9 @@ namespace NoteWork.Api.Endpoints;
 /// </summary>
 public static class ClientesEndpoints
 {
+    // CAMBIO (A2): tope para el texto de búsqueda, para que nadie mande un texto gigante.
+    private const int MaxLongitudBusqueda = 100;
+
     public static RouteGroupBuilder MapClientesEndpoints(this IEndpointRouteBuilder app)
     {
         var grupo = app.MapGroup("/api/clientes")
@@ -43,6 +46,13 @@ public static class ClientesEndpoints
             if (!string.IsNullOrWhiteSpace(buscar))
             {
                 var termino = buscar.Trim();
+
+                // CAMBIO (A2): si el texto de búsqueda es demasiado largo, lo recortamos.
+                if (termino.Length > MaxLongitudBusqueda)
+                {
+                    termino = termino[..MaxLongitudBusqueda];
+                }
+
                 consulta = consulta.Where(c => EF.Functions.ILike(c.Nombre, $"%{termino}%"));
             }
 
@@ -92,6 +102,9 @@ public static class ClientesEndpoints
         });
 
         // 3. CREAR
+        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (nombre obligatorio y límites de longitud) ANTES de entrar aquí. Por eso ya no hace
+        // falta la revisión manual del nombre: si llegamos a este código, los datos son válidos.
         grupo.MapPost("", async (
             ClienteGuardarSolicitud solicitud,
             AppDbContext db,
@@ -101,11 +114,6 @@ public static class ClientesEndpoints
             if (empresaId == null)
             {
                 return Results.Unauthorized();
-            }
-
-            if (string.IsNullOrWhiteSpace(solicitud.Nombre))
-            {
-                return Results.BadRequest(new { mensaje = "El nombre del cliente es obligatorio." });
             }
 
             var nuevoCliente = new Cliente
@@ -123,9 +131,11 @@ public static class ClientesEndpoints
 
             var respuesta = new ClienteResumen(nuevoCliente.Id, nuevoCliente.Nombre, nuevoCliente.Telefono);
             return Results.Created($"/api/clientes/{nuevoCliente.Id}", respuesta);
-        });
+        })
+        .ValidarSolicitud<ClienteGuardarSolicitud>();
 
         // 4. EDITAR
+        // CAMBIO (A2): mismo filtro de validación que en CREAR.
         grupo.MapPut("/{id:guid}", async (
             Guid id,
             ClienteGuardarSolicitud solicitud,
@@ -136,11 +146,6 @@ public static class ClientesEndpoints
             if (empresaId == null)
             {
                 return Results.Unauthorized();
-            }
-
-            if (string.IsNullOrWhiteSpace(solicitud.Nombre))
-            {
-                return Results.BadRequest(new { mensaje = "El nombre del cliente es obligatorio." });
             }
 
             var cliente = await db.Clientes
@@ -159,9 +164,10 @@ public static class ClientesEndpoints
             await db.SaveChangesAsync();
 
             return Results.NoContent();
-        });
+        })
+        .ValidarSolicitud<ClienteGuardarSolicitud>();
 
-        // 5. BORRAR (Borrado lógico)
+        // 5. BORRAR (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (
             Guid id,
             AppDbContext db,

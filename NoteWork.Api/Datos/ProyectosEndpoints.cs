@@ -72,6 +72,9 @@ public static class ProyectosEndpoints
         });
 
         // 3. Crear proyecto
+        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (nombre obligatorio, límites de longitud y enums válidos) ANTES de entrar aquí.
+        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (ProyectoCrearDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -79,12 +82,13 @@ public static class ProyectosEndpoints
 
             var proyecto = new Proyecto
             {
-                Nombre = dto.Nombre,
+                // CAMBIO (A2): se limpian los espacios sobrantes; Notas vacías se guardan como null.
+                Nombre = dto.Nombre.Trim(),
                 ClienteId = dto.ClienteId,
                 Tipo = dto.Tipo,
                 Estado = dto.Estado,
                 UnidadMedida = dto.UnidadMedida,
-                Notas = dto.Notas,
+                Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim(),
                 EmpresaId = empresaId
             };
 
@@ -92,9 +96,11 @@ public static class ProyectosEndpoints
             await db.SaveChangesAsync();
 
             return Results.Created($"/api/proyectos/{proyecto.Id}", proyecto.Id);
-        });
+        })
+        .ValidarSolicitud<ProyectoCrearDto>();
 
         // 4. Editar proyecto
+        // CAMBIO (A2): mismo filtro de validación que en CREAR.
         grupo.MapPut("/{id:guid}", async (Guid id, ProyectoEditarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -103,18 +109,19 @@ public static class ProyectosEndpoints
             var proyecto = await db.Proyectos.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
             if (proyecto is null) return Results.NotFound();
 
-            proyecto.Nombre = dto.Nombre;
+            proyecto.Nombre = dto.Nombre.Trim();
             proyecto.ClienteId = dto.ClienteId;
             proyecto.Tipo = dto.Tipo;
             proyecto.Estado = dto.Estado;
             proyecto.UnidadMedida = dto.UnidadMedida;
-            proyecto.Notas = dto.Notas;
+            proyecto.Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim();
 
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .ValidarSolicitud<ProyectoEditarDto>();
 
-        // 5. Eliminar proyecto (Borrado lógico)
+        // 5. Eliminar proyecto (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);

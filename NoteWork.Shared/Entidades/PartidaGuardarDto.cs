@@ -7,6 +7,7 @@ namespace NoteWork.Shared.Entidades;
 /// </summary>
 public class PartidaGuardarDto
 {
+    // [Required] en un Guid: ValidacionFiltro (en la Api) también rechaza Guid.Empty.
     [Required(ErrorMessage = "El área (nodo) es obligatoria.")]
     public Guid NodoId { get; set; }
 
@@ -48,5 +49,7 @@ public class PartidaGuardarDto
     [MaxLength(500, ErrorMessage = "La nota interna no puede superar los 500 caracteres.")]
     public string? NotaInterna { get; set; }
 
+    // CAMBIO (A2, hallazgo 2.1): antes aceptaba cualquier número (negativos o enormes).
+    [Range(0, 100000, ErrorMessage = "El orden debe ser un número entre 0 y 100000.")]
     public int Orden { get; set; } = 1;
 }

@@ -96,6 +96,9 @@ public static class NodosEndpoints
         });
 
         // 3. Crear un nuevo nodo
+        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (proyecto y nombre obligatorios, tipo válido, límites) ANTES de entrar aquí.
+        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (NodoGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -132,9 +135,12 @@ public static class NodosEndpoints
             await db.SaveChangesAsync();
 
             return Results.Created($"/api/nodos/{nuevoNodo.Id}", nuevoNodo.Id);
-        });
+        })
+        .ValidarSolicitud<NodoGuardarDto>();
 
         // 4. Editar un nodo existente
+        // CAMBIO (A2): mismo filtro de validación que en CREAR.
+        // (La validación del padre y de los ciclos queda para el paso A5.)
         grupo.MapPut("/{id:guid}", async (Guid id, NodoGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -156,9 +162,10 @@ public static class NodosEndpoints
 
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .ValidarSolicitud<NodoGuardarDto>();
 
-        // 5. Eliminar un nodo (Borrado lógico)
+        // 5. Eliminar un nodo (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);

@@ -84,6 +84,9 @@ public static class PartidasEndpoints
         });
 
         // 3. Crear una nueva partida
+        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (descripción obligatoria, montos no negativos, límites de longitud) ANTES de entrar aquí.
+        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (PartidaGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -124,9 +127,11 @@ public static class PartidasEndpoints
             await db.SaveChangesAsync();
 
             return Results.Created($"/api/partidas/{nuevaPartida.Id}", nuevaPartida.Id);
-        });
+        })
+        .ValidarSolicitud<PartidaGuardarDto>();
 
         // 4. Editar una partida existente
+        // CAMBIO (A2): mismo filtro de validación que en CREAR.
         grupo.MapPut("/{id:guid}", async (Guid id, PartidaGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);
@@ -151,9 +156,10 @@ public static class PartidasEndpoints
 
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .ValidarSolicitud<PartidaGuardarDto>();
 
-        // 5. Eliminar una partida (Borrado lógico)
+        // 5. Eliminar una partida (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
             var empresaId = await ObtenerEmpresaIdAsync(user, db);

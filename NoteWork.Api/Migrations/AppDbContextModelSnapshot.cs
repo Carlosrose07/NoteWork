@@ -236,7 +236,8 @@ namespace NoteWork.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Direccion")
-                        .HasColumnType("text");
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.Property<bool>("Eliminado")
                         .HasColumnType("boolean");
@@ -252,13 +253,16 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("Nombre")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("Notas")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<string>("Telefono")
-                        .HasColumnType("text");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.HasKey("Id");
 
@@ -330,7 +334,8 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("Nombre")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<int>("Orden")
                         .HasColumnType("integer");
@@ -377,7 +382,8 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("Descripcion")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.Property<decimal?>("Descuento")
                         .HasPrecision(18, 2)
@@ -390,7 +396,8 @@ namespace NoteWork.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Especificacion")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("timestamp with time zone");
@@ -399,16 +406,19 @@ namespace NoteWork.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Marca")
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("Material")
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<Guid>("NodoId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("NotaInterna")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("Orden")
                         .HasColumnType("integer");
@@ -458,10 +468,12 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("Nombre")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("Notas")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("Tipo")
                         .HasColumnType("integer");
