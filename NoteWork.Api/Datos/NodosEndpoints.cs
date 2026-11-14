@@ -14,20 +14,25 @@ public static class NodosEndpoints
         // 1. Obtener todos los nodos de un proyecto (armados en árbol)
         grupo.MapGet("/proyecto/{proyectoId:guid}", async (Guid proyectoId, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            // Verificamos que el proyecto exista y pertenezca a la empresa del usuario
+            // CAMBIO (B1): el proyecto debe ser visible para este usuario (suyo, o admin de la empresa).
+            // Respuesta NotFound genérica: igual si no existe o si es de otro usuario.
             var existeProyecto = await db.Proyectos
                 .AsNoTracking()
-                .AnyAsync(p => p.Id == proyectoId && p.EmpresaId == empresaId);
+                .VisiblesPara(ctx)
+                .AnyAsync(p => p.Id == proyectoId);
 
-            if (!existeProyecto) return Results.NotFound("El proyecto no existe.");
+            if (!existeProyecto) return Results.NotFound();
 
-            // Traemos todos los nodos del proyecto en UNA sola consulta para máxima velocidad
+            // Traemos todos los nodos del proyecto en UNA sola consulta para máxima velocidad.
+            // CAMBIO (B1): como el proyecto ya se verificó arriba, aquí basta filtrar por
+            // proyecto y empresa (así la consulta es más liviana). Los nodos eliminados
+            // los excluye solo el HasQueryFilter de AppDbContext.
             var nodosPlana = await db.Nodos
                 .AsNoTracking()
-                .Where(n => n.ProyectoId == proyectoId && n.EmpresaId == empresaId)
+                .Where(n => n.ProyectoId == proyectoId && n.EmpresaId == ctx.EmpresaId)
                 .OrderBy(n => n.Orden)
                 .ThenBy(n => n.FechaCreacion)
                 .Select(n => new NodoDto
@@ -39,7 +44,6 @@ public static class NodosEndpoints
                     Nombre = n.Nombre,
                     Orden = n.Orden,
                     TotalPartidas = n.Partidas.Count(p => !p.Eliminado),
-                    // CORREGIDO: Usamos TotalLinea
                     Subtotal = n.Partidas.Where(p => !p.Eliminado).Sum(p => (decimal?)p.TotalLinea) ?? 0m
                 })
                 .ToListAsync();
@@ -70,14 +74,15 @@ public static class NodosEndpoints
         });
 
         // 2. Obtener un nodo individual por su Id
+        // CAMBIO (B1): NodosVisibles solo deja pasar nodos de proyectos que este usuario puede ver.
         grupo.MapGet("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var nodo = await db.Nodos
+            var nodo = await NodosVisibles(db, ctx)
                 .AsNoTracking()
-                .Where(n => n.Id == id && n.EmpresaId == empresaId)
+                .Where(n => n.Id == id)
                 .Select(n => new NodoDto
                 {
                     Id = n.Id,
@@ -87,7 +92,6 @@ public static class NodosEndpoints
                     Nombre = n.Nombre,
                     Orden = n.Orden,
                     TotalPartidas = n.Partidas.Count(p => !p.Eliminado),
-                    // CORREGIDO: Usamos TotalLinea
                     Subtotal = n.Partidas.Where(p => !p.Eliminado).Sum(p => (decimal?)p.TotalLinea) ?? 0m
                 })
                 .FirstOrDefaultAsync();
@@ -96,27 +100,30 @@ public static class NodosEndpoints
         });
 
         // 3. Crear un nuevo nodo
-        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (A2) El filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
         // (proyecto y nombre obligatorios, tipo válido, límites) ANTES de entrar aquí.
-        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (NodoGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            // Validar que el proyecto pertenezca a la empresa
-            var existeProyecto = await db.Proyectos
+            // CAMBIO (B1): el proyecto debe ser visible para este usuario. El mensaje es el
+            // mismo si el proyecto no existe o si es de otra persona (no revela cuál de los dos).
+            var proyectoValido = await db.Proyectos
                 .AsNoTracking()
-                .AnyAsync(p => p.Id == dto.ProyectoId && p.EmpresaId == empresaId);
+                .VisiblesPara(ctx)
+                .AnyAsync(p => p.Id == dto.ProyectoId);
 
-            if (!existeProyecto) return Results.BadRequest("El proyecto especificado no es válido.");
+            if (!proyectoValido) return Results.BadRequest("El proyecto especificado no es válido.");
 
             // Si tiene PadreId, validar que el nodo padre pertenezca al mismo proyecto y empresa
             if (dto.PadreId.HasValue)
             {
                 var padreValido = await db.Nodos
                     .AsNoTracking()
-                    .AnyAsync(n => n.Id == dto.PadreId.Value && n.ProyectoId == dto.ProyectoId && n.EmpresaId == empresaId);
+                    .AnyAsync(n => n.Id == dto.PadreId.Value
+                                && n.ProyectoId == dto.ProyectoId
+                                && n.EmpresaId == ctx.EmpresaId);
 
                 if (!padreValido) return Results.BadRequest("El nodo padre especificado no es válido.");
             }
@@ -128,7 +135,7 @@ public static class NodosEndpoints
                 Tipo = dto.Tipo,
                 Nombre = dto.Nombre.Trim(),
                 Orden = dto.Orden,
-                EmpresaId = empresaId
+                EmpresaId = ctx.EmpresaId
             };
 
             db.Nodos.Add(nuevoNodo);
@@ -139,20 +146,34 @@ public static class NodosEndpoints
         .ValidarSolicitud<NodoGuardarDto>();
 
         // 4. Editar un nodo existente
-        // CAMBIO (A2): mismo filtro de validación que en CREAR.
-        // (La validación del padre y de los ciclos queda para el paso A5.)
+        // (A2) Mismo filtro de validación que en CREAR.
+        // La detección de ciclos (A es padre de B y B de A) queda para el paso A5.
         grupo.MapPut("/{id:guid}", async (Guid id, NodoGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var nodo = await db.Nodos.FirstOrDefaultAsync(n => n.Id == id && n.EmpresaId == empresaId);
+            // CAMBIO (B1): solo se puede editar un nodo de un proyecto visible para este usuario.
+            var nodo = await NodosVisibles(db, ctx).FirstOrDefaultAsync(n => n.Id == id);
             if (nodo is null) return Results.NotFound();
 
             // Evitar que un nodo se asigne a sí mismo como padre
             if (dto.PadreId == id)
             {
                 return Results.BadRequest("Un nodo no puede ser padre de sí mismo.");
+            }
+
+            // CAMBIO (B1): si se indica un padre, debe existir y ser del MISMO proyecto del nodo
+            // (nodo.ProyectoId, no el que venga en el DTO: un nodo nunca cambia de proyecto aquí).
+            if (dto.PadreId.HasValue)
+            {
+                var padreValido = await db.Nodos
+                    .AsNoTracking()
+                    .AnyAsync(n => n.Id == dto.PadreId.Value
+                                && n.ProyectoId == nodo.ProyectoId
+                                && n.EmpresaId == ctx.EmpresaId);
+
+                if (!padreValido) return Results.BadRequest("El nodo padre especificado no es válido.");
             }
 
             nodo.PadreId = dto.PadreId;
@@ -168,14 +189,16 @@ public static class NodosEndpoints
         // 5. Eliminar un nodo (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var nodo = await db.Nodos.FirstOrDefaultAsync(n => n.Id == id && n.EmpresaId == empresaId);
+            // CAMBIO (B1): solo se puede borrar un nodo de un proyecto visible para este usuario.
+            var nodo = await NodosVisibles(db, ctx).FirstOrDefaultAsync(n => n.Id == id);
             if (nodo is null) return Results.NotFound();
 
             // Validar que no tenga subnodos activos antes de eliminar
-            var tieneHijos = await db.Nodos.AnyAsync(n => n.PadreId == id && n.EmpresaId == empresaId);
+            // (los eliminados no cuentan: los excluye el HasQueryFilter)
+            var tieneHijos = await db.Nodos.AnyAsync(n => n.PadreId == id && n.EmpresaId == ctx.EmpresaId);
             if (tieneHijos)
             {
                 return Results.BadRequest("No se puede eliminar un nodo que contiene subnodos. Elimine primero su contenido.");
@@ -188,6 +211,16 @@ public static class NodosEndpoints
         });
     }
 
+    // CAMBIO (B1): nodos que este usuario puede ver o tocar.
+    //   - Deben ser de su empresa.
+    //   - Y además: el usuario es admin, o el PROYECTO del nodo es suyo (n.Proyecto.UsuarioId).
+    // Los nodos no tienen dueño propio: heredan el dueño de su proyecto.
+    private static IQueryable<Nodo> NodosVisibles(AppDbContext db, ContextoUsuario ctx) =>
+        db.Nodos.Where(n => n.EmpresaId == ctx.EmpresaId
+                         && (ctx.EsAdmin || n.Proyecto!.UsuarioId == ctx.UsuarioId));
+    // El "!" solo calma la advertencia CS8602 del compilador. EF Core lo traduce a un JOIN
+    // en SQL, así que no hay nulos en la práctica y el "!" no cambia la consulta.
+
     // Método recursivo para sumar los totales hacia arriba (Pisos <- Apartamentos <- Áreas)
     private static void AcumularTotalesHaciaArriba(NodoDto nodo)
     {
@@ -199,12 +232,6 @@ public static class NodosEndpoints
         }
     }
 
-    private static async Task<Guid> ObtenerEmpresaIdAsync(ClaimsPrincipal user, AppDbContext db)
-    {
-        var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdString, out Guid userId)) return Guid.Empty;
-
-        var usuario = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        return usuario?.EmpresaId ?? Guid.Empty;
-    }
+    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
+    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
 }

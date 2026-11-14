@@ -13,15 +13,20 @@ public static class ProyectosEndpoints
         var grupo = app.MapGroup("/api/proyectos").RequireAuthorization();
 
         // 1. Obtener lista paginada
+        // CAMBIO (B1): VisiblesPara(ctx) deja solo los proyectos que este usuario puede ver:
+        //   - usuario normal: los que él creó (UsuarioId = su Id)
+        //   - admin: todos los de su empresa
+        // El filtro de borrado lógico (!Eliminado) lo pone AppDbContext solo (HasQueryFilter).
         grupo.MapGet("/", async (AppDbContext db, ClaimsPrincipal user, int pagina = 1, int tamano = 20) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
+            // CAMBIO (B1): se quitó el .Include(p => p.Cliente): el Select de abajo ya
+            // pide el nombre del cliente, así que el Include era trabajo de más.
             var query = db.Proyectos
                 .AsNoTracking()
-                .Include(p => p.Cliente)
-                .Where(p => p.EmpresaId == empresaId)
+                .VisiblesPara(ctx)
                 .OrderByDescending(p => p.FechaCreacion);
 
             var total = await query.CountAsync();
@@ -46,14 +51,17 @@ public static class ProyectosEndpoints
         });
 
         // 2. Obtener un proyecto por Id
+        // CAMBIO (B1): si el proyecto es de otro usuario, VisiblesPara no lo devuelve
+        // y la respuesta es NotFound (igual que si no existiera).
         grupo.MapGet("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
             var proyecto = await db.Proyectos
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (proyecto is null) return Results.NotFound();
 
@@ -72,24 +80,28 @@ public static class ProyectosEndpoints
         });
 
         // 3. Crear proyecto
-        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (A2) El filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
         // (nombre obligatorio, límites de longitud y enums válidos) ANTES de entrar aquí.
-        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (ProyectoCrearDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
+
+            // CAMBIO (B1): el dueño del proyecto nuevo es quien lo crea (también si es admin).
+            // El cliente elegido debe ser de ese mismo dueño.
+            if (!await ClienteEsValidoAsync(db, ctx, dto.ClienteId, ctx.UsuarioId))
+                return ClienteInvalido();
 
             var proyecto = new Proyecto
             {
-                // CAMBIO (A2): se limpian los espacios sobrantes; Notas vacías se guardan como null.
                 Nombre = dto.Nombre.Trim(),
                 ClienteId = dto.ClienteId,
                 Tipo = dto.Tipo,
                 Estado = dto.Estado,
                 UnidadMedida = dto.UnidadMedida,
                 Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim(),
-                EmpresaId = empresaId
+                EmpresaId = ctx.EmpresaId,
+                UsuarioId = ctx.UsuarioId // CAMBIO (B1): asigna el dueño
             };
 
             db.Proyectos.Add(proyecto);
@@ -100,14 +112,21 @@ public static class ProyectosEndpoints
         .ValidarSolicitud<ProyectoCrearDto>();
 
         // 4. Editar proyecto
-        // CAMBIO (A2): mismo filtro de validación que en CREAR.
         grupo.MapPut("/{id:guid}", async (Guid id, ProyectoEditarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var proyecto = await db.Proyectos.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
+            var proyecto = await db.Proyectos
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (proyecto is null) return Results.NotFound();
+
+            // CAMBIO (B1): el cliente se compara con el dueño DEL PROYECTO (proyecto.UsuarioId),
+            // no con quien edita. Así, si el admin edita un proyecto de usuario1, solo puede
+            // elegir clientes de usuario1.
+            if (!await ClienteEsValidoAsync(db, ctx, dto.ClienteId, proyecto.UsuarioId))
+                return ClienteInvalido();
 
             proyecto.Nombre = dto.Nombre.Trim();
             proyecto.ClienteId = dto.ClienteId;
@@ -115,6 +134,7 @@ public static class ProyectosEndpoints
             proyecto.Estado = dto.Estado;
             proyecto.UnidadMedida = dto.UnidadMedida;
             proyecto.Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim();
+            // CAMBIO (B1): aquí NO se toca proyecto.UsuarioId. El dueño nunca cambia.
 
             await db.SaveChangesAsync();
             return Results.NoContent();
@@ -124,10 +144,12 @@ public static class ProyectosEndpoints
         // 5. Eliminar proyecto (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var proyecto = await db.Proyectos.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
+            var proyecto = await db.Proyectos
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (proyecto is null) return Results.NotFound();
 
             db.Proyectos.Remove(proyecto);
@@ -139,28 +161,49 @@ public static class ProyectosEndpoints
         // 6. Obtener resumen de cotización del proyecto
         grupo.MapGet("/{id:guid}/resumen", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var proyectoExiste = await db.Proyectos.AnyAsync(p => p.Id == id && p.EmpresaId == empresaId);
+            // CAMBIO (B1): primero se comprueba que el proyecto sea visible para este usuario.
+            var proyectoExiste = await db.Proyectos
+                .VisiblesPara(ctx)
+                .AnyAsync(p => p.Id == id);
             if (!proyectoExiste) return Results.NotFound();
 
+            // CAMBIO (B1): se quitó .Where(p => !p.Eliminado): el HasQueryFilter de
+            // AppDbContext ya excluye nodos y partidas eliminados.
             var totalGeneral = await db.Nodos
                 .Where(n => n.ProyectoId == id)
                 .SelectMany(n => n.Partidas)
-                .Where(p => !p.Eliminado)
                 .SumAsync(p => (decimal?)p.TotalLinea) ?? 0m;
 
             return Results.Ok(new { TotalGeneral = totalGeneral });
         });
     }
 
-    private static async Task<Guid> ObtenerEmpresaIdAsync(ClaimsPrincipal user, AppDbContext db)
+    // CAMBIO (B1): comprueba que el cliente exista, no esté eliminado (lo hace el
+    // HasQueryFilter), sea de la misma empresa y tenga el mismo dueño que el proyecto.
+    // Sin cliente (null) es válido: un proyecto puede no tener cliente.
+    private static async Task<bool> ClienteEsValidoAsync(
+        AppDbContext db, ContextoUsuario ctx, Guid? clienteId, Guid duenoId)
     {
-        var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdString, out Guid userId)) return Guid.Empty;
+        if (clienteId is null) return true;
 
-        var usuario = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        return usuario?.EmpresaId ?? Guid.Empty;
+        return await db.Clientes
+            .AsNoTracking()
+            .AnyAsync(c => c.Id == clienteId.Value
+                        && c.EmpresaId == ctx.EmpresaId
+                        && c.UsuarioId == duenoId);
     }
+
+    // Respuesta genérica: igual si el cliente no existe, está eliminado o es de otro dueño.
+    // Así no se revela si el Id pertenece a otra persona.
+    private static IResult ClienteInvalido() =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["ClienteId"] = new[] { "El cliente seleccionado no existe o no está disponible." }
+        });
+
+    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
+    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
 }

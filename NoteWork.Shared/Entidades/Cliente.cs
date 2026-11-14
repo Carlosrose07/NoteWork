@@ -11,6 +11,12 @@ public class Cliente : EntidadBase
     // usuario cuando está en obra con el celular en la mano.
     public string Nombre { get; set; } = string.Empty;
 
+    // NUEVO (B1): dueño del cliente = el usuario que lo creó.
+    // Es un Guid simple, sin clave foránea a propósito (no enlaza con la clase Usuario).
+    // El usuario normal solo ve sus clientes; el administrador ve todos los de su empresa.
+    // El dueño nunca cambia, ni siquiera cuando el administrador edita el cliente.
+    public Guid UsuarioId { get; set; }
+
     // Opcional, pero es el dato más útil: el PDF se envía por WhatsApp.
     // Se guarda como texto (string) y no como número, porque un teléfono
     // puede empezar con 0 o llevar "+" y guiones, y un número perdería eso.

@@ -9,7 +9,10 @@ namespace NoteWork.Api.Endpoints;
 
 /// <summary>
 /// Endpoints para la gestión de clientes (CRUD completo).
-/// Todos requieren sesión activa. La empresa siempre se obtiene del usuario del token.
+/// Todos requieren sesión activa.
+/// CAMBIO (B1): cada usuario ve y edita solo los clientes que él creó.
+/// El administrador ve y controla todos los de su empresa.
+/// La regla vive en un solo lugar: VisiblesPara(ctx) (archivo ContextoUsuario.cs).
 /// </summary>
 public static class ClientesEndpoints
 {
@@ -29,8 +32,9 @@ public static class ClientesEndpoints
             AppDbContext db = null!,
             ClaimsPrincipal usuario = null!) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(db, usuario);
-            if (empresaId == null)
+            // CAMBIO (B1): una sola consulta nos da usuario, empresa y si es admin.
+            var ctx = await db.ObtenerContextoAsync(usuario);
+            if (ctx == null)
             {
                 return Results.Unauthorized();
             }
@@ -39,9 +43,11 @@ public static class ClientesEndpoints
             if (tamano < 1) tamano = 20;
             if (tamano > 50) tamano = 50;
 
+            // CAMBIO (B1): VisiblesPara = misma empresa Y (admin O dueño).
+            // Reemplaza al filtro anterior por EmpresaId.
             var consulta = db.Clientes
                 .AsNoTracking()
-                .Where(c => c.EmpresaId == empresaId.Value);
+                .VisiblesPara(ctx);
 
             if (!string.IsNullOrWhiteSpace(buscar))
             {
@@ -75,15 +81,18 @@ public static class ClientesEndpoints
             AppDbContext db,
             ClaimsPrincipal usuario) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(db, usuario);
-            if (empresaId == null)
+            var ctx = await db.ObtenerContextoAsync(usuario);
+            if (ctx == null)
             {
                 return Results.Unauthorized();
             }
 
+            // CAMBIO (B1): si el cliente es de otro usuario, no aparece aquí y
+            // la respuesta es NotFound (igual que si no existiera).
             var cliente = await db.Clientes
                 .AsNoTracking()
-                .Where(c => c.Id == id && c.EmpresaId == empresaId.Value)
+                .VisiblesPara(ctx)
+                .Where(c => c.Id == id)
                 .Select(c => new ClienteGuardarSolicitud
                 {
                     Nombre = c.Nombre,
@@ -103,15 +112,14 @@ public static class ClientesEndpoints
 
         // 3. CREAR
         // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
-        // (nombre obligatorio y límites de longitud) ANTES de entrar aquí. Por eso ya no hace
-        // falta la revisión manual del nombre: si llegamos a este código, los datos son válidos.
+        // (nombre obligatorio y límites de longitud) ANTES de entrar aquí.
         grupo.MapPost("", async (
             ClienteGuardarSolicitud solicitud,
             AppDbContext db,
             ClaimsPrincipal usuario) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(db, usuario);
-            if (empresaId == null)
+            var ctx = await db.ObtenerContextoAsync(usuario);
+            if (ctx == null)
             {
                 return Results.Unauthorized();
             }
@@ -119,7 +127,9 @@ public static class ClientesEndpoints
             var nuevoCliente = new Cliente
             {
                 Id = Guid.NewGuid(),
-                EmpresaId = empresaId.Value,
+                EmpresaId = ctx.EmpresaId,
+                // CAMBIO (B1): el dueño es quien lo crea (si lo crea el admin, el dueño es el admin).
+                UsuarioId = ctx.UsuarioId,
                 Nombre = solicitud.Nombre.Trim(),
                 Telefono = string.IsNullOrWhiteSpace(solicitud.Telefono) ? null : solicitud.Telefono.Trim(),
                 Direccion = string.IsNullOrWhiteSpace(solicitud.Direccion) ? null : solicitud.Direccion.Trim(),
@@ -142,20 +152,24 @@ public static class ClientesEndpoints
             AppDbContext db,
             ClaimsPrincipal usuario) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(db, usuario);
-            if (empresaId == null)
+            var ctx = await db.ObtenerContextoAsync(usuario);
+            if (ctx == null)
             {
                 return Results.Unauthorized();
             }
 
+            // CAMBIO (B1): solo encuentra el cliente si es visible para este usuario.
             var cliente = await db.Clientes
-                .FirstOrDefaultAsync(c => c.Id == id && c.EmpresaId == empresaId.Value);
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(c => c.Id == id);
 
             if (cliente == null)
             {
                 return Results.NotFound();
             }
 
+            // IMPORTANTE (B1): aquí NO se toca cliente.UsuarioId.
+            // Si el admin edita un cliente de usuario1, sigue siendo de usuario1.
             cliente.Nombre = solicitud.Nombre.Trim();
             cliente.Telefono = string.IsNullOrWhiteSpace(solicitud.Telefono) ? null : solicitud.Telefono.Trim();
             cliente.Direccion = string.IsNullOrWhiteSpace(solicitud.Direccion) ? null : solicitud.Direccion.Trim();
@@ -173,14 +187,16 @@ public static class ClientesEndpoints
             AppDbContext db,
             ClaimsPrincipal usuario) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(db, usuario);
-            if (empresaId == null)
+            var ctx = await db.ObtenerContextoAsync(usuario);
+            if (ctx == null)
             {
                 return Results.Unauthorized();
             }
 
+            // CAMBIO (B1): un usuario solo puede borrar lo suyo; el admin, todo lo de su empresa.
             var cliente = await db.Clientes
-                .FirstOrDefaultAsync(c => c.Id == id && c.EmpresaId == empresaId.Value);
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(c => c.Id == id);
 
             if (cliente == null)
             {
@@ -196,21 +212,6 @@ public static class ClientesEndpoints
         return grupo;
     }
 
-    /// <summary>
-    /// Lee el EmpresaId del usuario autenticado consultando solo esa columna en la base de datos.
-    /// </summary>
-    private static async Task<Guid?> ObtenerEmpresaIdAsync(AppDbContext db, ClaimsPrincipal usuario)
-    {
-        var usuarioIdStr = usuario.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(usuarioIdStr) || !Guid.TryParse(usuarioIdStr, out var usuarioId))
-        {
-            return null;
-        }
-
-        return await db.Users
-            .AsNoTracking()
-            .Where(u => u.Id == usuarioId)
-            .Select(u => (Guid?)u.EmpresaId)
-            .FirstOrDefaultAsync();
-    }
+    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
+    // Ahora se usa db.ObtenerContextoAsync(usuario), que vive en ContextoUsuario.cs.
 }

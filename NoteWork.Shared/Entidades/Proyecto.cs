@@ -16,6 +16,12 @@ public class Proyecto : EntidadBase
     // (ej. "Torre Los Álamos" o "Closet de María").
     public string Nombre { get; set; } = string.Empty;
 
+    // NUEVO (B1): dueño del proyecto = el usuario que lo creó.
+    // Es un Guid simple, sin clave foránea a propósito (no enlaza con la clase Usuario).
+    // El usuario normal solo ve sus proyectos; el administrador ve todos los de su empresa.
+    // El dueño nunca cambia, ni siquiera cuando el administrador edita el proyecto.
+    public Guid UsuarioId { get; set; }
+
     // Decide qué niveles del árbol se usan:
     // Edificio = pisos y apartamentos, Casa = directo a áreas,
     // TrabajoRapido = una sola puerta o closet.

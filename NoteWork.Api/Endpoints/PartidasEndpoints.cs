@@ -14,18 +14,22 @@ public static class PartidasEndpoints
         // 1. Obtener todas las partidas de un nodo (Área)
         grupo.MapGet("/nodo/{nodoId:guid}", async (Guid nodoId, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var existeNodo = await db.Nodos
+            // CAMBIO (B1): el nodo debe ser de un proyecto visible para este usuario.
+            // NotFound genérico: igual si no existe o si es de otra persona.
+            var existeNodo = await NodosVisibles(db, ctx)
                 .AsNoTracking()
-                .AnyAsync(n => n.Id == nodoId && n.EmpresaId == empresaId);
+                .AnyAsync(n => n.Id == nodoId);
 
-            if (!existeNodo) return Results.NotFound("El área especificada no existe.");
+            if (!existeNodo) return Results.NotFound();
 
+            // Como el nodo ya se verificó arriba, basta filtrar por nodo y empresa.
+            // Las partidas eliminadas las excluye el HasQueryFilter de AppDbContext.
             var partidas = await db.Partidas
                 .AsNoTracking()
-                .Where(p => p.NodoId == nodoId && p.EmpresaId == empresaId)
+                .Where(p => p.NodoId == nodoId && p.EmpresaId == ctx.EmpresaId)
                 .OrderBy(p => p.Orden)
                 .ThenBy(p => p.FechaCreacion)
                 .Select(p => new PartidaDto
@@ -52,14 +56,15 @@ public static class PartidasEndpoints
         });
 
         // 2. Obtener una partida individual por su Id
+        // CAMBIO (B1): PartidasVisibles solo deja pasar partidas de proyectos que este usuario puede ver.
         grupo.MapGet("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var partida = await db.Partidas
+            var partida = await PartidasVisibles(db, ctx)
                 .AsNoTracking()
-                .Where(p => p.Id == id && p.EmpresaId == empresaId)
+                .Where(p => p.Id == id)
                 .Select(p => new PartidaDto
                 {
                     Id = p.Id,
@@ -84,21 +89,22 @@ public static class PartidasEndpoints
         });
 
         // 3. Crear una nueva partida
-        // CAMBIO (A2): el filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
+        // (A2) El filtro .ValidarSolicitud<...>() del final ejecuta las reglas del DTO
         // (descripción obligatoria, montos no negativos, límites de longitud) ANTES de entrar aquí.
-        // Si llegamos a este código, los datos ya son válidos y .Trim() no puede fallar.
         grupo.MapPost("/", async (PartidaGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            // Regla de negocio: el nodo debe existir, pertenecer a la empresa y ser de tipo Area
-            var nodo = await db.Nodos
+            // CAMBIO (B1): el nodo debe ser de un proyecto visible para este usuario.
+            // El mensaje es el mismo si el área no existe o es de otra persona (no revela cuál de los dos).
+            var nodo = await NodosVisibles(db, ctx)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(n => n.Id == dto.NodoId && n.EmpresaId == empresaId);
+                .FirstOrDefaultAsync(n => n.Id == dto.NodoId);
 
             if (nodo is null) return Results.BadRequest("El área especificada no es válida.");
 
+            // Regla de negocio: solo se agregan partidas dentro de un nodo de tipo Area
             if (nodo.Tipo != TipoNodo.Area)
             {
                 return Results.BadRequest("Solo se pueden agregar partidas dentro de un nodo de tipo Área.");
@@ -120,7 +126,7 @@ public static class PartidasEndpoints
                 CostoInterno = dto.CostoInterno,
                 NotaInterna = string.IsNullOrWhiteSpace(dto.NotaInterna) ? null : dto.NotaInterna.Trim(),
                 Orden = dto.Orden,
-                EmpresaId = empresaId
+                EmpresaId = ctx.EmpresaId
             };
 
             db.Partidas.Add(nuevaPartida);
@@ -131,15 +137,17 @@ public static class PartidasEndpoints
         .ValidarSolicitud<PartidaGuardarDto>();
 
         // 4. Editar una partida existente
-        // CAMBIO (A2): mismo filtro de validación que en CREAR.
+        // (A2) Mismo filtro de validación que en CREAR.
         grupo.MapPut("/{id:guid}", async (Guid id, PartidaGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var partida = await db.Partidas.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
+            // CAMBIO (B1): solo se puede editar una partida de un proyecto visible para este usuario.
+            var partida = await PartidasVisibles(db, ctx).FirstOrDefaultAsync(p => p.Id == id);
             if (partida is null) return Results.NotFound();
 
+            // La partida no cambia de nodo: partida.NodoId no se toca aquí.
             partida.Descripcion = dto.Descripcion.Trim();
             partida.Especificacion = string.IsNullOrWhiteSpace(dto.Especificacion) ? null : dto.Especificacion.Trim();
             partida.Material = string.IsNullOrWhiteSpace(dto.Material) ? null : dto.Material.Trim();
@@ -162,10 +170,11 @@ public static class PartidasEndpoints
         // 5. Eliminar una partida (Borrado lógico: AppDbContext convierte el Remove en Eliminado = true)
         grupo.MapDelete("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
-            var empresaId = await ObtenerEmpresaIdAsync(user, db);
-            if (empresaId == Guid.Empty) return Results.Unauthorized();
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
 
-            var partida = await db.Partidas.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId);
+            // CAMBIO (B1): solo se puede borrar una partida de un proyecto visible para este usuario.
+            var partida = await PartidasVisibles(db, ctx).FirstOrDefaultAsync(p => p.Id == id);
             if (partida is null) return Results.NotFound();
 
             db.Partidas.Remove(partida);
@@ -175,12 +184,21 @@ public static class PartidasEndpoints
         });
     }
 
-    private static async Task<Guid> ObtenerEmpresaIdAsync(ClaimsPrincipal user, AppDbContext db)
-    {
-        var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdString, out Guid userId)) return Guid.Empty;
+    // CAMBIO (B1): partidas que este usuario puede ver o tocar.
+    //   - Deben ser de su empresa.
+    //   - Y además: el usuario es admin, o el PROYECTO de la partida es suyo.
+    // Las partidas no tienen dueño propio: heredan el de su proyecto, a través de partida -> nodo -> proyecto.
+    // (El "!" solo calma la advertencia CS8602; EF Core lo traduce a JOIN en SQL.)
+    private static IQueryable<Partida> PartidasVisibles(AppDbContext db, ContextoUsuario ctx) =>
+        db.Partidas.Where(p => p.EmpresaId == ctx.EmpresaId
+                            && (ctx.EsAdmin || p.Nodo!.Proyecto!.UsuarioId == ctx.UsuarioId));
 
-        var usuario = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        return usuario?.EmpresaId ?? Guid.Empty;
-    }
+    // CAMBIO (B1): misma regla que NodosVisibles de NodosEndpoints.cs (copiada aquí a propósito).
+    // Mejora futura: moverla a ContextoUsuario.cs para tener una sola copia de esta regla de seguridad.
+    private static IQueryable<Nodo> NodosVisibles(AppDbContext db, ContextoUsuario ctx) =>
+        db.Nodos.Where(n => n.EmpresaId == ctx.EmpresaId
+                         && (ctx.EsAdmin || n.Proyecto!.UsuarioId == ctx.UsuarioId));
+
+    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
+    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
 }

@@ -264,6 +264,9 @@ namespace NoteWork.Api.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EmpresaId");
@@ -480,6 +483,9 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<int>("UnidadMedida")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
