@@ -1,5 +1,7 @@
+using System.Security.Claims;                          // CAMBIO (Bloque B): para leer el Id del usuario del token
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;             // CAMBIO (Bloque B): memoria interna de .NET (IMemoryCache)
 using NoteWork.Api.Datos;
 using NoteWork.Shared.Entidades;
 using NoteWork.Api.Endpoints;
@@ -14,6 +16,10 @@ var cadenaConexion = builder.Configuration.GetConnectionString("NoteWorkDb")
 
 builder.Services.AddDbContext<AppDbContext>(opciones =>
     opciones.UseNpgsql(cadenaConexion));
+
+// CAMBIO (Bloque B): memoria interna para recordar unos segundos que un usuario
+// está activo (ver el filtro más abajo). Viene incluida en .NET: no instala nada.
+builder.Services.AddMemoryCache();
 
 // --- IDENTITY (usuarios, contraseñas y login) ---
 builder.Services.AddIdentityApiEndpoints<Usuario>(opciones =>
@@ -135,12 +141,69 @@ if (app.Environment.IsDevelopment())
 app.UseCors("PermitirClient");
 
 app.UseAuthentication();
+
+// --- CAMBIO (Bloque B): FILTRO "USUARIO ACTIVO" ---
+// Va justo DESPUÉS de UseAuthentication (ya sabemos quién llama) y ANTES de
+// UseAuthorization (antes de decidir qué puede hacer). Así una cuenta desactivada
+// queda fuera de TODOS los endpoints protegidos, no solo del login.
+//
+// Por qué hace falta: el token de sesión sigue siendo válido hasta que vence, y el
+// login solo se revisa al entrar. Sin este filtro, alguien desactivado que ya tenía
+// la app abierta seguiría trabajando.
+//
+// Rendimiento (Neon y Render gratis): consultar la base en CADA petición sería caro.
+// Por eso, si el usuario está activo, lo recordamos 15 segundos en memoria.
+//   - Un usuario desactivado puede seguir hasta 15 segundos; luego recibe 401.
+//   - Solo guardamos en memoria el resultado "activo". Si está desactivado NO se
+//     guarda, así al reactivarlo puede entrar de inmediato.
+app.Use(async (contexto, siguiente) =>
+{
+    // Las rutas sin sesión (como /salud o el login) pasan sin revisar nada.
+    if (contexto.User.Identity?.IsAuthenticated == true)
+    {
+        var idTexto = contexto.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(idTexto, out var usuarioId))
+        {
+            contexto.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
+        var memoria = contexto.RequestServices.GetRequiredService<IMemoryCache>();
+        var claveMemoria = $"usuario-activo:{usuarioId}";
+
+        if (!memoria.TryGetValue(claveMemoria, out _))
+        {
+            var db = contexto.RequestServices.GetRequiredService<AppDbContext>();
+
+            // Una sola columna: (bool?) devuelve null si el usuario ya no existe.
+            var activo = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == usuarioId)
+                .Select(u => (bool?)u.Activo)
+                .FirstOrDefaultAsync(contexto.RequestAborted);
+
+            // Desactivado o inexistente -> 401, igual que una sesión no válida.
+            if (activo != true)
+            {
+                contexto.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+
+            memoria.Set(claveMemoria, true, TimeSpan.FromSeconds(15));
+        }
+    }
+
+    await siguiente();
+});
+// --- FIN DEL FILTRO ---
+
 app.UseAuthorization();
 
 // Dirección de comprobación: devuelve "ok" si la Api está despierta.
 app.MapGet("/salud", () => Results.Ok("ok"));
 
 app.MapCuentaEndpoints();
+app.MapUsuariosEndpoints();   // CAMBIO (Bloque B): gestión de usuarios (solo Admin)
 app.MapClientesEndpoints();
 app.MapProyectosEndpoints();
 app.MapNodosEndpoints();

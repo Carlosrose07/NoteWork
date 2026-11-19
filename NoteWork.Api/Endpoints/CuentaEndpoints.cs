@@ -57,6 +57,17 @@ public static class CuentaEndpoints
         if (usuario is null)
             return Results.Unauthorized();
 
+        // CAMBIO (Bloque B): un usuario DESACTIVADO no puede iniciar sesión.
+        // Respondemos con el MISMO 401 que usuario inexistente o contraseña
+        // incorrecta, a propósito: si el mensaje fuera distinto, cualquiera
+        // podría averiguar qué correos existen y cuáles están desactivados.
+        // Se revisa ANTES de comprobar la contraseña, para no gastar trabajo
+        // (ni contar intentos fallidos) con una cuenta que no puede entrar.
+        // Las sesiones que ya estaban abiertas se cortan aparte, con el filtro
+        // de Program.cs que revisa Activo en cada petición.
+        if (!usuario.Activo)
+            return Results.Unauthorized();
+
         // lockoutOnFailure: true -> tras varios intentos fallidos, la cuenta se
         // bloquea un rato (protege contra adivinar contraseñas).
         var resultado = await signInManager.CheckPasswordSignInAsync(
@@ -144,6 +155,8 @@ public static class CuentaEndpoints
             return Results.Unauthorized();
 
         // 3. Armar el usuario nuevo (sin contraseña: Identity guarda solo el hash).
+        //    Activo no se asigna aquí: vale true por defecto (Bloque B), así que
+        //    todo usuario nuevo nace pudiendo iniciar sesión.
         var correo = solicitud.Email.Trim();
         var nuevo = new Usuario
         {
@@ -194,7 +207,13 @@ public static class CuentaEndpoints
 
     // Traduce los códigos de error más comunes de Identity al español.
     // Es un switch directo en memoria: cero gasto extra de rendimiento.
-    private static string TraducirErrorIdentity(IdentityError error) => error.Code switch
+    // CAMBIO (Bloque B): pasó de "private" a "internal" para que
+    // UsuariosEndpoints.cs (restablecer contraseña) reutilice la misma
+    // traducción sin duplicar código. "internal" = visible solo dentro de
+    // este proyecto (la Api), no desde fuera.
+    // El mensaje por defecto ahora es neutro: antes decía "crear el usuario",
+    // lo cual sería incorrecto al restablecer una contraseña.
+    internal static string TraducirErrorIdentity(IdentityError error) => error.Code switch
     {
         "DuplicateEmail" or "DuplicateUserName" => "Ya existe un usuario registrado con ese correo.",
         "InvalidEmail" or "InvalidUserName" => "El correo no tiene un formato válido.",
@@ -204,6 +223,6 @@ public static class CuentaEndpoints
         "PasswordRequiresUpper" => "La contraseña debe incluir al menos una letra mayúscula (A-Z).",
         "PasswordRequiresNonAlphanumeric" => "La contraseña debe incluir al menos un símbolo (por ejemplo: !, @, #, *).",
         "PasswordRequiresUniqueChars" => "La contraseña debe tener caracteres más variados.",
-        _ => "No se pudo crear el usuario. Revisa los datos ingresados."
+        _ => "No se pudo completar la operación. Revisa los datos ingresados."
     };
 }

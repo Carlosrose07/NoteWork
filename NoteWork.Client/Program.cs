@@ -10,27 +10,22 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // --- DIRECCIÓN DE LA API (4.15.5) ---
-// El Client necesita saber dónde vive la Api. La dirección NO va escrita en el
-// código: se lee del archivo wwwroot/appsettings.json (clave "ApiUrl").
-// Así, al publicar la app, solo se cambia ese archivo y no hay que recompilar.
-// (Ojo: este archivo viaja al navegador, así que NUNCA lleva contraseñas ni
-// claves; una dirección no es secreta, por eso aquí sí está bien.)
+// Se lee de wwwroot/appsettings.json (clave "ApiUrl"). Así, al publicar, solo
+// se cambia ese archivo y no hay que recompilar. Este archivo viaja al
+// navegador: NUNCA lleva contraseñas ni claves.
 var urlApi = builder.Configuration["ApiUrl"]
     ?? throw new InvalidOperationException(
         "Falta 'ApiUrl' en wwwroot/appsettings.json.");
 
-// El HttpClient apunta a la Api, porque es a quien el Client le habla.
-// Un solo HttpClient compartido es liviano: no se crean conexiones nuevas en
-// cada pantalla, algo importante en celulares modestos.
-// (4.17) El HttpClient ahora pasa por ManejadorToken: cada petición a la Api
-// sale con el token en la cabecera Authorization (si hay sesión vigente).
-// InnerHandler es el "último eslabón" de la cadena: el que de verdad envía
-// la petición por la red. HttpClientHandler en Blazor WASM usa el fetch del
-// navegador, así que no agrega peso. Sigue siendo UN solo HttpClient
-// compartido (AddScoped), liviano para celulares modestos.
+// El HttpClient apunta a la Api y pasa por ManejadorToken (4.17): cada petición
+// sale con el token si hay sesión vigente.
+// CAMBIO (Bloque B): al manejador se le pasa también "sp" para que pueda pedir
+// ServicioSesion y NavigationManager más tarde, solo cuando llegue un 401
+// (así no se forma un círculo con el HttpClient al arrancar).
+// Sigue siendo UN solo HttpClient compartido (AddScoped), liviano para celulares.
 builder.Services.AddScoped(sp =>
 {
-    var manejador = new ManejadorToken(sp.GetRequiredService<IJSRuntime>())
+    var manejador = new ManejadorToken(sp.GetRequiredService<IJSRuntime>(), sp)
     {
         InnerHandler = new HttpClientHandler()
     };
@@ -39,15 +34,11 @@ builder.Services.AddScoped(sp =>
 });
 
 // --- SERVICIO DE SESIÓN (4.15.8) ---
-// "Registrar" el servicio es avisarle a Blazor que existe. Desde ahora, cualquier
-// pantalla puede pedirlo y Blazor se lo entrega ya armado (con su HttpClient y
-// su IJSRuntime). AddScoped = se crea UNA vez y se comparte mientras la app
-// esté abierta, así no se gasta memoria creando copias.
+// AddScoped = se crea UNA vez y se comparte mientras la app esté abierta.
 builder.Services.AddScoped<ServicioSesion>();
 
-// --- SERVICIO DE USUARIOS (NUEVO 4.19) ---
-// Mismo patrón que ServicioSesion: se crea una vez y se comparte (AddScoped).
-// Blazor le entrega solo el HttpClient compartido, que ya trae el token.
+// --- SERVICIOS DE DATOS ---
+// Mismo patrón: una instancia compartida, con el HttpClient que ya trae el token.
 builder.Services.AddScoped<ServicioUsuarios>();
 builder.Services.AddScoped<ServicioClientes>();
 builder.Services.AddScoped<ServicioProyectos>();
@@ -55,15 +46,12 @@ builder.Services.AddScoped<ServicioNodos>();
 builder.Services.AddScoped<ServicioPartidas>();
 
 // --- AUTENTICACIÓN DE PÁGINAS (4.16) ---
-// AddAuthorizationCore activa el sistema de permisos de Blazor ([Authorize]).
-// Es la versión "Core": más liviana, suficiente para una app WASM.
+// AddAuthorizationCore activa [Authorize] en su versión liviana para WASM.
 builder.Services.AddScoped<ProveedorAutenticacion>();
 builder.Services.AddAuthorizationCore();
 
-// Registramos UNA sola instancia de ProveedorAutenticacion (AddScoped) y la
-// publicamos también como AuthenticationStateProvider, que es el nombre que
-// Blazor busca. Así Blazor y nuestro código comparten el mismo objeto y no
-// se crean copias (menos memoria en celulares modestos).
+// Una sola instancia de ProveedorAutenticacion, publicada también como
+// AuthenticationStateProvider (el nombre que Blazor busca).
 builder.Services.AddScoped<AuthenticationStateProvider>(
     sp => sp.GetRequiredService<ProveedorAutenticacion>());
 

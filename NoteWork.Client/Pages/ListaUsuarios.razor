@@ -1,0 +1,368 @@
+﻿@page "/usuarios"
+@* (Bloque B) Lista de usuarios de la empresa, con las acciones del administrador:
+   editar nombre, desactivar / reactivar y cambiar contraseña.
+   Pensada para celulares modestos: tarjetas apiladas (sin tablas anchas), botones grandes,
+   UNA sola llamada para cargar la lista y, después de cada acción, se actualiza solo la
+   tarjeta tocada (no se vuelve a pedir toda la lista). *@
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Client.Servicios
+@using NoteWork.Shared.Cuenta
+@inject ServicioUsuarios Servicio
+@inject ServicioSesion Sesion
+@inject NavigationManager Navegador
+
+@* Solo entra quien tenga sesión Y el rol Admin. OJO: esto solo protege lo que se VE.
+   La protección real es la Api, que exige el rol Admin en todos estos endpoints y revisa
+   que el usuario sea de la misma empresa. *@
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Usuarios - NoteWork</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Usuarios</h3>
+    <a href="/usuarios/nuevo" class="btn btn-primary">Nuevo usuario</a>
+</div>
+
+@if (_cargando)
+{
+    <p><em>Cargando usuarios...</em></p>
+}
+else if (_errorCarga is not null)
+{
+    <div class="alert alert-danger" role="alert">@_errorCarga</div>
+    <button class="btn btn-secondary" @onclick="CargarAsync">Reintentar</button>
+}
+else if (!_usuarios.Any())
+{
+    <p>No hay usuarios.</p>
+}
+else
+{
+    <div class="list-group mb-3">
+        @foreach (var u in _usuarios)
+        {
+            <div class="list-group-item">
+
+                @* --- Datos de la tarjeta --- *@
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <h5 class="mb-1">
+                        @u.NombreCompleto
+                        @if (EsMio(u))
+                        {
+                            <small class="text-muted">(tú)</small>
+                        }
+                    </h5>
+                    @if (u.Activo)
+                    {
+                        <span class="badge bg-success">Activo</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Desactivado</span>
+                    }
+                </div>
+                <div><small class="text-muted">@u.Email</small></div>
+                <div><small class="text-muted">Rol: @u.Rol</small></div>
+
+                @* --- Mensaje de resultado (éxito o error) de la última acción en ESTA tarjeta.
+                       Va dentro de la tarjeta para que se vea aunque la lista sea larga. --- *@
+                @if (_mensajeId == u.Id && _mensaje is not null)
+                {
+                    <div class="alert @(_mensajeEsError ? "alert-danger" : "alert-success") mt-2 mb-0" role="alert">
+                        @_mensaje
+                    </div>
+                }
+
+                @if (_abiertoId == u.Id && _modo == Modo.Nombre)
+                {
+                    @* --- Panel: editar nombre --- *@
+                    <div class="mt-3">
+                        <label class="form-label">Nombre completo</label>
+                        <input type="text" class="form-control mb-2" maxlength="150" autocomplete="off"
+                               @bind="_nombreEditado" @bind:event="oninput" />
+                        <div class="d-grid gap-2">
+                            @* disabled="@_procesando": evita dobles toques mientras la petición va en camino. *@
+                            <button class="btn btn-primary" @onclick="() => GuardarNombreAsync(u)" disabled="@_procesando">
+                                @(_procesando ? "Guardando..." : "Guardar nombre")
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cerrar" disabled="@_procesando">Cancelar</button>
+                        </div>
+                    </div>
+                }
+                else if (_abiertoId == u.Id && _modo == Modo.Password)
+                {
+                    @* --- Panel: cambiar contraseña --- *@
+                    <div class="mt-3">
+                        <label class="form-label">Contraseña nueva</label>
+                        @* autocomplete="new-password": le dice al navegador que NO rellene aquí
+                           tu propia contraseña de admin; esta es la clave de OTRA persona. *@
+                        <input type="password" class="form-control mb-1" maxlength="100" autocomplete="new-password"
+                               @bind="_passwordNueva" @bind:event="oninput" />
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                Mínimo 8 caracteres, con mayúscula, minúscula, número y símbolo.
+                                Después comunícasela a la persona: la app no la guarda ni la muestra.
+                            </small>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" @onclick="() => CambiarPasswordAsync(u)" disabled="@_procesando">
+                                @(_procesando ? "Guardando..." : "Cambiar contraseña")
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cerrar" disabled="@_procesando">Cancelar</button>
+                        </div>
+                    </div>
+                }
+                else if (_abiertoId == u.Id && _modo == Modo.Desactivar)
+                {
+                    @* --- Panel: confirmar desactivación (corta la sesión de esa persona, por eso se confirma) --- *@
+                    <div class="mt-3">
+                        <p class="mb-2">
+                            ¿Desactivar a <strong>@u.NombreCompleto</strong>? No podrá entrar a la app y su sesión
+                            se cerrará en unos segundos. No se borra nada: puedes reactivarlo cuando quieras.
+                        </p>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-danger" @onclick="() => DesactivarAsync(u)" disabled="@_procesando">
+                                @(_procesando ? "Desactivando..." : "Sí, desactivar")
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cerrar" disabled="@_procesando">Cancelar</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @* --- Botones de la tarjeta (ningún panel abierto) --- *@
+                    <div class="d-grid gap-2 mt-3">
+                        <button class="btn btn-outline-primary" @onclick="() => Abrir(u, Modo.Nombre)" disabled="@_procesando">
+                            Editar nombre
+                        </button>
+                        <button class="btn btn-outline-primary" @onclick="() => Abrir(u, Modo.Password)" disabled="@_procesando">
+                            Cambiar contraseña
+                        </button>
+
+                        @if (u.Activo)
+                        {
+                            @* Tu propia tarjeta NO ofrece "Desactivar": la Api lo rechaza de todos modos
+                               ("No puedes desactivarte a ti mismo"), así que no mostramos un botón que va a fallar. *@
+                            @if (!EsMio(u))
+                            {
+                                <button class="btn btn-outline-danger" @onclick="() => Abrir(u, Modo.Desactivar)" disabled="@_procesando">
+                                    Desactivar
+                                </button>
+                            }
+                        }
+                        else
+                        {
+                            @* Reactivar es seguro y reversible: no pide confirmación. *@
+                            <button class="btn btn-outline-success" @onclick="() => ReactivarAsync(u)" disabled="@_procesando">
+                                @(_procesando ? "Reactivando..." : "Reactivar")
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // Qué panel está abierto dentro de una tarjeta. Solo UNO a la vez en toda la pantalla:
+    // así hay menos cosas dibujadas y la pantalla es más liviana en celulares modestos.
+    private enum Modo { Ninguno, Nombre, Password, Desactivar }
+
+    private List<UsuarioResumen> _usuarios = new();
+    private string? _miCorreo;          // correo de la sesión: sirve para reconocer MI tarjeta
+    private bool _cargando = true;
+    private string? _errorCarga;
+
+    private Guid? _abiertoId;           // tarjeta con un panel abierto
+    private Modo _modo = Modo.Ninguno;
+    private string _nombreEditado = "";
+    private string _passwordNueva = "";
+    private bool _procesando;           // true mientras una petición va en camino
+
+    // Mensaje de resultado y la tarjeta a la que pertenece.
+    private Guid? _mensajeId;
+    private string? _mensaje;
+    private bool _mensajeEsError;
+
+    // Se ejecuta una vez al entrar a la pantalla.
+    protected override async Task OnInitializedAsync()
+    {
+        // El correo de la sesión nos dice cuál tarjeta es la tuya.
+        var sesion = await Sesion.ObtenerSesionAsync();
+        _miCorreo = sesion?.Email;
+
+        await CargarAsync();
+    }
+
+    // UNA sola llamada trae toda la lista (la Api manda solo lo necesario).
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _errorCarga = null;
+
+        var (ok, usuarios, error) = await Servicio.ListarAsync();
+
+        if (ok)
+        {
+            _usuarios = usuarios ?? new List<UsuarioResumen>();
+        }
+        else if (!await SesionVencidaAsync(error))
+        {
+            _errorCarga = error;
+        }
+
+        _cargando = false;
+    }
+
+    // ¿Esta tarjeta es la mía? Se compara el correo sin distinguir mayúsculas.
+    private bool EsMio(UsuarioResumen u) =>
+        string.Equals(u.Email, _miCorreo, StringComparison.OrdinalIgnoreCase);
+
+    // ------------------------------------------------------------------
+    // PANELES
+    // ------------------------------------------------------------------
+    private void Abrir(UsuarioResumen u, Modo modo)
+    {
+        _abiertoId = u.Id;
+        _modo = modo;
+        _nombreEditado = u.NombreCompleto;
+        _passwordNueva = "";
+        _mensaje = null;
+    }
+
+    private void Cerrar()
+    {
+        _abiertoId = null;
+        _modo = Modo.Ninguno;
+        _passwordNueva = "";    // no dejamos una contraseña escrita en memoria
+    }
+
+    // ------------------------------------------------------------------
+    // ACCIONES
+    // ------------------------------------------------------------------
+    private async Task GuardarNombreAsync(UsuarioResumen u)
+    {
+        // Primera barrera rápida en el celular (la Api vuelve a validar todo).
+        var nombre = _nombreEditado.Trim();
+        if (nombre.Length < 2 || nombre.Length > 150)
+        {
+            Mostrar(u.Id, "El nombre debe tener entre 2 y 150 caracteres.", esError: true);
+            return;
+        }
+
+        await EjecutarAsync(
+            u,
+            () => Servicio.EditarNombreAsync(u.Id, nombre),
+            "Nombre actualizado.",
+            () => Reemplazar(u.Id, nombre: nombre));
+    }
+
+    private async Task CambiarPasswordAsync(UsuarioResumen u)
+    {
+        // Misma regla de largo que la pantalla de crear usuario. El resto de reglas
+        // (mayúscula, número, símbolo) las revisa la Api y nos devuelve el motivo.
+        if (_passwordNueva.Length < 8)
+        {
+            Mostrar(u.Id, "La contraseña debe tener al menos 8 caracteres.", esError: true);
+            return;
+        }
+
+        await EjecutarAsync(
+            u,
+            () => Servicio.RestablecerPasswordAsync(u.Id, _passwordNueva),
+            "Contraseña cambiada. Comunícasela a la persona.",
+            () => { });   // la contraseña no cambia nada de lo que se ve en la tarjeta
+    }
+
+    private async Task DesactivarAsync(UsuarioResumen u)
+    {
+        await EjecutarAsync(
+            u,
+            () => Servicio.DesactivarAsync(u.Id),
+            "Usuario desactivado.",
+            () => Reemplazar(u.Id, activo: false));
+    }
+
+    private async Task ReactivarAsync(UsuarioResumen u)
+    {
+        await EjecutarAsync(
+            u,
+            () => Servicio.ReactivarAsync(u.Id),
+            "Usuario reactivado.",
+            () => Reemplazar(u.Id, activo: true));
+    }
+
+    // Las cuatro acciones hacen lo mismo: bloquear botones, llamar al servicio y, si salió
+    // bien, actualizar SOLO esa tarjeta y cerrar el panel; si falló, mostrar el motivo y
+    // dejar el panel abierto para poder corregir y reintentar.
+    private async Task EjecutarAsync(
+        UsuarioResumen u,
+        Func<Task<(bool Exito, string? Error)>> accion,
+        string textoExito,
+        Action alExito)
+    {
+        _procesando = true;
+        _mensaje = null;
+
+        var (ok, error) = await accion();
+
+        if (ok)
+        {
+            alExito();
+            Cerrar();
+            Mostrar(u.Id, textoExito, esError: false);
+        }
+        else if (!await SesionVencidaAsync(error))
+        {
+            Mostrar(u.Id, error ?? "No se pudo completar la acción.", esError: true);
+        }
+
+        _procesando = false;
+    }
+
+    // ------------------------------------------------------------------
+    // AYUDANTES
+    // ------------------------------------------------------------------
+    private void Mostrar(Guid id, string texto, bool esError)
+    {
+        _mensajeId = id;
+        _mensaje = texto;
+        _mensajeEsError = esError;
+    }
+
+    // Cambia una tarjeta en la lista local, sin volver a pedirla a la Api.
+    // Creamos un UsuarioResumen nuevo con los datos copiados (así no dependemos de que
+    // sus propiedades se puedan modificar).
+    private void Reemplazar(Guid id, string? nombre = null, bool? activo = null)
+    {
+        var indice = _usuarios.FindIndex(x => x.Id == id);
+        if (indice < 0) return;
+
+        var actual = _usuarios[indice];
+        _usuarios[indice] = new UsuarioResumen
+        {
+            Id = actual.Id,
+            Email = actual.Email,
+            NombreCompleto = nombre ?? actual.NombreCompleto,
+            Rol = actual.Rol,
+            Activo = activo ?? actual.Activo,
+            FechaCreacion = actual.FechaCreacion
+        };
+    }
+
+    // Si la Api dijo "401" (la sesión venció, o esta cuenta fue desactivada), no tiene sentido
+    // seguir en la pantalla: se borra la sesión guardada y se manda a iniciar sesión.
+    // Devuelve true si redirigió.
+    private async Task<bool> SesionVencidaAsync(string? mensaje)
+    {
+        if (mensaje != ErroresApi.SesionVencida)
+        {
+            return false;
+        }
+
+        await Sesion.CerrarSesionAsync();
+        Navegador.NavigateTo("login");
+        return true;
+    }
+}
