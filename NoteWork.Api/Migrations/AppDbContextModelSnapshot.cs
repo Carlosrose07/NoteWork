@@ -272,7 +272,7 @@ namespace NoteWork.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EmpresaId");
+                    b.HasIndex("EmpresaId", "UsuarioId");
 
                     b.ToTable("Clientes");
                 });
@@ -494,7 +494,7 @@ namespace NoteWork.Api.Migrations
 
                     b.HasIndex("ClienteId");
 
-                    b.HasIndex("EmpresaId");
+                    b.HasIndex("EmpresaId", "UsuarioId");
 
                     b.ToTable("Proyectos");
                 });

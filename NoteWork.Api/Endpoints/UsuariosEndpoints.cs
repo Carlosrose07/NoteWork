@@ -11,7 +11,8 @@ namespace NoteWork.Api.Endpoints;
 // cada archivo tenga una sola responsabilidad y no crezca sin control.
 public static class UsuariosEndpoints
 {
-    // Tope del nombre para que nadie guarde un texto gigante (mismo criterio de A2).
+    // Reglas de longitud del nombre alineadas con ListaUsuarios.razor (entre 2 y 150 caracteres).
+    private const int MinLongitudNombre = 2;
     private const int MaxLongitudNombre = 150;
 
     public static IEndpointRouteBuilder MapUsuariosEndpoints(this IEndpointRouteBuilder app)
@@ -118,10 +119,12 @@ public static class UsuariosEndpoints
         if (adminActual is null)
             return Results.Unauthorized();
 
-        // Revisión propia además del filtro: el nombre no puede quedar vacío ni gigante.
+        // Revisión en servidor: evita nombres vacíos, de 1 sola letra o demasiado largos.
         var nombre = solicitud.NombreCompleto?.Trim();
         if (string.IsNullOrWhiteSpace(nombre))
             return Error("El nombre es obligatorio.");
+        if (nombre.Length < MinLongitudNombre)
+            return Error($"El nombre debe tener al menos {MinLongitudNombre} caracteres.");
         if (nombre.Length > MaxLongitudNombre)
             return Error($"El nombre no puede pasar de {MaxLongitudNombre} caracteres.");
 

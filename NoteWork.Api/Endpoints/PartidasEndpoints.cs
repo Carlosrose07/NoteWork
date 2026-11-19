@@ -17,10 +17,10 @@ public static class PartidasEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): el nodo debe ser de un proyecto visible para este usuario.
-            // NotFound genérico: igual si no existe o si es de otra persona.
-            var existeNodo = await NodosVisibles(db, ctx)
+            // VisiblesPara(ctx) vive centralizado en ContextoUsuario.cs.
+            var existeNodo = await db.Nodos
                 .AsNoTracking()
+                .VisiblesPara(ctx)
                 .AnyAsync(n => n.Id == nodoId);
 
             if (!existeNodo) return Results.NotFound();
@@ -56,14 +56,14 @@ public static class PartidasEndpoints
         });
 
         // 2. Obtener una partida individual por su Id
-        // CAMBIO (B1): PartidasVisibles solo deja pasar partidas de proyectos que este usuario puede ver.
         grupo.MapGet("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            var partida = await PartidasVisibles(db, ctx)
+            var partida = await db.Partidas
                 .AsNoTracking()
+                .VisiblesPara(ctx)
                 .Where(p => p.Id == id)
                 .Select(p => new PartidaDto
                 {
@@ -96,10 +96,9 @@ public static class PartidasEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): el nodo debe ser de un proyecto visible para este usuario.
-            // El mensaje es el mismo si el área no existe o es de otra persona (no revela cuál de los dos).
-            var nodo = await NodosVisibles(db, ctx)
+            var nodo = await db.Nodos
                 .AsNoTracking()
+                .VisiblesPara(ctx)
                 .FirstOrDefaultAsync(n => n.Id == dto.NodoId);
 
             if (nodo is null) return Results.BadRequest("El área especificada no es válida.");
@@ -118,12 +117,12 @@ public static class PartidasEndpoints
                 Material = string.IsNullOrWhiteSpace(dto.Material) ? null : dto.Material.Trim(),
                 Marca = string.IsNullOrWhiteSpace(dto.Marca) ? null : dto.Marca.Trim(),
                 Cantidad = dto.Cantidad,
-                TotalLinea = dto.TotalLinea,
+                TotalLinea = RedondearMonto(dto.TotalLinea),
                 AnchoMm = dto.AnchoMm,
                 AltoMm = dto.AltoMm,
                 ProfundidadMm = dto.ProfundidadMm,
-                Descuento = dto.Descuento,
-                CostoInterno = dto.CostoInterno,
+                Descuento = RedondearMonto(dto.Descuento),
+                CostoInterno = RedondearMonto(dto.CostoInterno),
                 NotaInterna = string.IsNullOrWhiteSpace(dto.NotaInterna) ? null : dto.NotaInterna.Trim(),
                 Orden = dto.Orden,
                 EmpresaId = ctx.EmpresaId
@@ -143,8 +142,9 @@ public static class PartidasEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): solo se puede editar una partida de un proyecto visible para este usuario.
-            var partida = await PartidasVisibles(db, ctx).FirstOrDefaultAsync(p => p.Id == id);
+            var partida = await db.Partidas
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (partida is null) return Results.NotFound();
 
             // La partida no cambia de nodo: partida.NodoId no se toca aquí.
@@ -153,12 +153,12 @@ public static class PartidasEndpoints
             partida.Material = string.IsNullOrWhiteSpace(dto.Material) ? null : dto.Material.Trim();
             partida.Marca = string.IsNullOrWhiteSpace(dto.Marca) ? null : dto.Marca.Trim();
             partida.Cantidad = dto.Cantidad;
-            partida.TotalLinea = dto.TotalLinea;
+            partida.TotalLinea = RedondearMonto(dto.TotalLinea);
             partida.AnchoMm = dto.AnchoMm;
             partida.AltoMm = dto.AltoMm;
             partida.ProfundidadMm = dto.ProfundidadMm;
-            partida.Descuento = dto.Descuento;
-            partida.CostoInterno = dto.CostoInterno;
+            partida.Descuento = RedondearMonto(dto.Descuento);
+            partida.CostoInterno = RedondearMonto(dto.CostoInterno);
             partida.NotaInterna = string.IsNullOrWhiteSpace(dto.NotaInterna) ? null : dto.NotaInterna.Trim();
             partida.Orden = dto.Orden;
 
@@ -173,8 +173,9 @@ public static class PartidasEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): solo se puede borrar una partida de un proyecto visible para este usuario.
-            var partida = await PartidasVisibles(db, ctx).FirstOrDefaultAsync(p => p.Id == id);
+            var partida = await db.Partidas
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (partida is null) return Results.NotFound();
 
             db.Partidas.Remove(partida);
@@ -184,21 +185,10 @@ public static class PartidasEndpoints
         });
     }
 
-    // CAMBIO (B1): partidas que este usuario puede ver o tocar.
-    //   - Deben ser de su empresa.
-    //   - Y además: el usuario es admin, o el PROYECTO de la partida es suyo.
-    // Las partidas no tienen dueño propio: heredan el de su proyecto, a través de partida -> nodo -> proyecto.
-    // (El "!" solo calma la advertencia CS8602; EF Core lo traduce a JOIN en SQL.)
-    private static IQueryable<Partida> PartidasVisibles(AppDbContext db, ContextoUsuario ctx) =>
-        db.Partidas.Where(p => p.EmpresaId == ctx.EmpresaId
-                            && (ctx.EsAdmin || p.Nodo!.Proyecto!.UsuarioId == ctx.UsuarioId));
+    // Normaliza los montos a 2 decimales en el servidor para evitar diferencias de centavos en las sumas.
+    private static decimal RedondearMonto(decimal valor) =>
+        Math.Round(valor, 2, MidpointRounding.AwayFromZero);
 
-    // CAMBIO (B1): misma regla que NodosVisibles de NodosEndpoints.cs (copiada aquí a propósito).
-    // Mejora futura: moverla a ContextoUsuario.cs para tener una sola copia de esta regla de seguridad.
-    private static IQueryable<Nodo> NodosVisibles(AppDbContext db, ContextoUsuario ctx) =>
-        db.Nodos.Where(n => n.EmpresaId == ctx.EmpresaId
-                         && (ctx.EsAdmin || n.Proyecto!.UsuarioId == ctx.UsuarioId));
-
-    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
-    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
+    private static decimal? RedondearMonto(decimal? valor) =>
+        valor.HasValue ? Math.Round(valor.Value, 2, MidpointRounding.AwayFromZero) : null;
 }

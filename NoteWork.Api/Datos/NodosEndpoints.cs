@@ -74,14 +74,15 @@ public static class NodosEndpoints
         });
 
         // 2. Obtener un nodo individual por su Id
-        // CAMBIO (B1): NodosVisibles solo deja pasar nodos de proyectos que este usuario puede ver.
+        // VisiblesPara(ctx) vive centralizado en ContextoUsuario.cs.
         grupo.MapGet("/{id:guid}", async (Guid id, AppDbContext db, ClaimsPrincipal user) =>
         {
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            var nodo = await NodosVisibles(db, ctx)
+            var nodo = await db.Nodos
                 .AsNoTracking()
+                .VisiblesPara(ctx)
                 .Where(n => n.Id == id)
                 .Select(n => new NodoDto
                 {
@@ -147,14 +148,16 @@ public static class NodosEndpoints
 
         // 4. Editar un nodo existente
         // (A2) Mismo filtro de validación que en CREAR.
-        // La detección de ciclos (A es padre de B y B de A) queda para el paso A5.
+        // (A5) Incluye detección de ciclos en la jerarquía de nodos.
         grupo.MapPut("/{id:guid}", async (Guid id, NodoGuardarDto dto, AppDbContext db, ClaimsPrincipal user) =>
         {
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): solo se puede editar un nodo de un proyecto visible para este usuario.
-            var nodo = await NodosVisibles(db, ctx).FirstOrDefaultAsync(n => n.Id == id);
+            // Solo se puede editar un nodo de un proyecto visible para este usuario.
+            var nodo = await db.Nodos
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(n => n.Id == id);
             if (nodo is null) return Results.NotFound();
 
             // Evitar que un nodo se asigne a sí mismo como padre
@@ -163,17 +166,25 @@ public static class NodosEndpoints
                 return Results.BadRequest("Un nodo no puede ser padre de sí mismo.");
             }
 
-            // CAMBIO (B1): si se indica un padre, debe existir y ser del MISMO proyecto del nodo
-            // (nodo.ProyectoId, no el que venga en el DTO: un nodo nunca cambia de proyecto aquí).
+            // (A5) En UNA sola consulta ligera validamos que el nuevo padre pertenezca al mismo
+            // proyecto/empresa y que no sea un descendiente del nodo actual (evita ciclos A -> B -> A).
             if (dto.PadreId.HasValue)
             {
-                var padreValido = await db.Nodos
+                var padresPorId = await db.Nodos
                     .AsNoTracking()
-                    .AnyAsync(n => n.Id == dto.PadreId.Value
-                                && n.ProyectoId == nodo.ProyectoId
-                                && n.EmpresaId == ctx.EmpresaId);
+                    .Where(n => n.ProyectoId == nodo.ProyectoId && n.EmpresaId == ctx.EmpresaId)
+                    .Select(n => new { n.Id, n.PadreId })
+                    .ToDictionaryAsync(n => n.Id, n => n.PadreId);
 
-                if (!padreValido) return Results.BadRequest("El nodo padre especificado no es válido.");
+                if (!padresPorId.ContainsKey(dto.PadreId.Value))
+                {
+                    return Results.BadRequest("El nodo padre especificado no es válido.");
+                }
+
+                if (GenerariaCiclo(id, dto.PadreId.Value, padresPorId))
+                {
+                    return Results.BadRequest("No se puede mover un nodo dentro de uno de sus propios subnodos.");
+                }
             }
 
             nodo.PadreId = dto.PadreId;
@@ -192,8 +203,10 @@ public static class NodosEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): solo se puede borrar un nodo de un proyecto visible para este usuario.
-            var nodo = await NodosVisibles(db, ctx).FirstOrDefaultAsync(n => n.Id == id);
+            // Solo se puede borrar un nodo de un proyecto visible para este usuario.
+            var nodo = await db.Nodos
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(n => n.Id == id);
             if (nodo is null) return Results.NotFound();
 
             // Validar que no tenga subnodos activos antes de eliminar
@@ -211,15 +224,22 @@ public static class NodosEndpoints
         });
     }
 
-    // CAMBIO (B1): nodos que este usuario puede ver o tocar.
-    //   - Deben ser de su empresa.
-    //   - Y además: el usuario es admin, o el PROYECTO del nodo es suyo (n.Proyecto.UsuarioId).
-    // Los nodos no tienen dueño propio: heredan el dueño de su proyecto.
-    private static IQueryable<Nodo> NodosVisibles(AppDbContext db, ContextoUsuario ctx) =>
-        db.Nodos.Where(n => n.EmpresaId == ctx.EmpresaId
-                         && (ctx.EsAdmin || n.Proyecto!.UsuarioId == ctx.UsuarioId));
-    // El "!" solo calma la advertencia CS8602 del compilador. EF Core lo traduce a un JOIN
-    // en SQL, así que no hay nulos en la práctica y el "!" no cambia la consulta.
+    // (A5) Recorre los ancestros del nuevo padre propuesto: si llegamos al mismo nodoId,
+    // significa que nuevoPadreId es descendiente de nodoId y crearía un ciclo infinito.
+    private static bool GenerariaCiclo(Guid nodoId, Guid nuevoPadreId, Dictionary<Guid, Guid?> padresPorId)
+    {
+        var visitados = new HashSet<Guid>();
+        Guid? actual = nuevoPadreId;
+
+        while (actual.HasValue)
+        {
+            if (actual.Value == nodoId) return true;
+            if (!visitados.Add(actual.Value)) return true; // Cortafuegos si ya hubiera un ciclo previo
+            actual = padresPorId.TryGetValue(actual.Value, out var padre) ? padre : null;
+        }
+
+        return false;
+    }
 
     // Método recursivo para sumar los totales hacia arriba (Pisos <- Apartamentos <- Áreas)
     private static void AcumularTotalesHaciaArriba(NodoDto nodo)
@@ -231,7 +251,4 @@ public static class NodosEndpoints
             nodo.TotalPartidas += hijo.TotalPartidas;
         }
     }
-
-    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
-    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
 }

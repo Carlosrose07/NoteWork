@@ -44,4 +44,17 @@ public static class ContextoUsuarioExtensiones
         this IQueryable<Cliente> consulta, ContextoUsuario ctx) =>
         consulta.Where(c => c.EmpresaId == ctx.EmpresaId
                          && (ctx.EsAdmin || c.UsuarioId == ctx.UsuarioId));
+
+    // La misma regla para los nodos (heredan el dueño de su proyecto).
+    // El "!" solo calma la advertencia CS8602; EF Core lo traduce a un JOIN en SQL.
+    public static IQueryable<Nodo> VisiblesPara(
+        this IQueryable<Nodo> consulta, ContextoUsuario ctx) =>
+        consulta.Where(n => n.EmpresaId == ctx.EmpresaId
+                         && (ctx.EsAdmin || n.Proyecto!.UsuarioId == ctx.UsuarioId));
+
+    // La misma regla para las partidas (heredan el dueño a través de partida -> nodo -> proyecto).
+    public static IQueryable<Partida> VisiblesPara(
+        this IQueryable<Partida> consulta, ContextoUsuario ctx) =>
+        consulta.Where(p => p.EmpresaId == ctx.EmpresaId
+                         && (ctx.EsAdmin || p.Nodo!.Proyecto!.UsuarioId == ctx.UsuarioId));
 }

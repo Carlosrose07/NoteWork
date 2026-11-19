@@ -1,11 +1,13 @@
 ﻿@inherits LayoutComponentBase
 <div class="page">
-    <div class="sidebar">
+    @* d-print-none oculta el menú lateral al imprimir o exportar el presupuesto a PDF *@
+    <div class="sidebar d-print-none">
         <NavMenu />
     </div>
 
     <main>
-        <div class="top-row px-4">
+        @* d-print-none evita que la barra superior aparezca en la hoja impresa *@
+        <div class="top-row px-4 d-print-none">
             <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
         </div>
 

@@ -50,10 +50,12 @@ public class AppDbContext : IdentityDbContext<Usuario, IdentityRole<Guid>, Guid>
         modelBuilder.Entity<Partida>().HasQueryFilter(e => !e.Eliminado);
 
         // --- ÍNDICES ---
-        // Casi todas las consultas filtran por EmpresaId (cada empresa solo ve
-        // lo suyo). El índice hace que esa búsqueda sea rápida aunque crezcan los datos.
-        modelBuilder.Entity<Cliente>().HasIndex(e => e.EmpresaId);
-        modelBuilder.Entity<Proyecto>().HasIndex(e => e.EmpresaId);
+        // Índice compuesto (EmpresaId, UsuarioId): acelera tanto las consultas de Admin
+        // (que filtran por EmpresaId) como las de usuario normal (EmpresaId + UsuarioId),
+        // sin mantener dos índices separados en PostgreSQL.
+        modelBuilder.Entity<Cliente>().HasIndex(e => new { e.EmpresaId, e.UsuarioId });
+        modelBuilder.Entity<Proyecto>().HasIndex(e => new { e.EmpresaId, e.UsuarioId });
+
         modelBuilder.Entity<Nodo>().HasIndex(e => e.EmpresaId);
         modelBuilder.Entity<Partida>().HasIndex(e => e.EmpresaId);
 

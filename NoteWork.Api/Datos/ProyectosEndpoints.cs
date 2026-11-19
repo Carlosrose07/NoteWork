@@ -22,6 +22,12 @@ public static class ProyectosEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
+            // Regla de paginación segura (igual que ClientesEndpoints): evita OFFSET negativos
+            // y pone un tope máximo de 50 registros por petición para proteger memoria y BD.
+            if (pagina < 1) pagina = 1;
+            if (tamano < 1) tamano = 20;
+            if (tamano > 50) tamano = 50;
+
             // CAMBIO (B1): se quitó el .Include(p => p.Cliente): el Select de abajo ya
             // pide el nombre del cliente, así que el Include era trabajo de más.
             var query = db.Proyectos

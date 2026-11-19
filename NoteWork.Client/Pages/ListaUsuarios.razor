@@ -49,7 +49,8 @@ else
                         @u.NombreCompleto
                         @if (EsMio(u))
                         {
-                            <small class="text-muted">(tú)</small>
+                            @* ms-1 asegura separación visual porque Razor recorta el espacio entre @u.NombreCompleto y @if *@
+                            <small class="text-muted ms-1">(tú)</small>
                         }
                     </h5>
                     @if (u.Activo)
