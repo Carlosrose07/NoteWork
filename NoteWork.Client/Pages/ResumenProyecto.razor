@@ -2,18 +2,25 @@
 @inject HttpClient Http
 @inject ServicioNodos ServicioNodos
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @using System.Net.Http.Json
 @using Microsoft.JSInterop
 @using NoteWork.Shared.Entidades
 @using NoteWork.Client.Servicios
 
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Resumen de Cotización</h2>
-        <!-- d-print-none: el botón NO sale en la hoja impresa -->
-        <button class="btn btn-outline-primary d-print-none" @onclick="Imprimir">
-            <i class="bi bi-printer"></i> Imprimir
-        </button>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="mb-0">Resumen de Cotización</h2>
+
+        <!-- d-print-none: ninguno de los dos botones sale en la hoja impresa -->
+        <div class="d-flex gap-2 d-print-none">
+            <button type="button" class="btn btn-outline-secondary" @onclick="Volver">
+                Volver
+            </button>
+            <button type="button" class="btn btn-outline-primary" @onclick="Imprimir">
+                Imprimir
+            </button>
+        </div>
     </div>
     <hr />
 
@@ -61,6 +68,12 @@
     private bool cargando = true;
     private ResumenCotizacionTempDto? resumen;
     private List<NodoDto> raices = new();
+
+    // Regresa directo al desglose del proyecto sin depender del historial del navegador (más seguro en PWA/iPhone)
+    private void Volver()
+    {
+        Navigation.NavigateTo($"/proyectos/{ProyectoId}/nodos");
+    }
 
     // Le pide al navegador que abra la ventana de impresión (en iPhone permite "Guardar como PDF")
     private async Task Imprimir()
@@ -111,21 +124,17 @@
     // Dibuja un nodo y, de forma recursiva, sus hijos. Solo lectura.
     private RenderFragment RenderNodo(NodoDto nodo, int nivel) => __builder =>
     {
-        var icono = nivel == 0 ? "bi-building" : nivel == 1 ? "bi-house-door" : "bi-bounding-box";
         var claseTitulo = nivel == 0 ? "fs-5 fw-bold" : nivel == 1 ? "fw-semibold" : "small";
         var claseMonto = nivel == 0 ? "fs-5 fw-bold text-success" : nivel == 1 ? "fw-semibold text-success" : "small text-success";
 
         <div>
             <div class="d-flex justify-content-between align-items-center gap-2 p-2 rounded @(nivel == 0 ? "bg-light border shadow-sm" : "border-bottom")">
-                <div class="d-flex align-items-center gap-2" style="min-width:0;">
-                    <i class="bi @icono"></i>
-                    <div style="min-width:0;">
-                        <div class="@claseTitulo text-break">@nodo.Nombre</div>
-                        @if (nodo.TotalPartidas > 0)
-                        {
-                            <div class="text-muted small">@nodo.TotalPartidas partida(s)</div>
-                        }
-                    </div>
+                <div style="min-width:0;">
+                    <div class="@claseTitulo text-break">@nodo.Nombre</div>
+                    @if (nodo.TotalPartidas > 0)
+                    {
+                        <div class="text-muted small">@nodo.TotalPartidas partida(s)</div>
+                    }
                 </div>
                 <div class="@claseMonto text-nowrap">$@nodo.Subtotal.ToString("N2")</div>
             </div>

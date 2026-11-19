@@ -7,37 +7,43 @@
 @inject ServicioNodos ServicioNodos
 @inject NavigationManager Navegacion
 
-<div class="container mt-3">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<PageTitle>Partidas - NoteWork</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-            <h3 class="mb-0">
+            <h2 class="mb-0 text-primary fw-bold">
                 Partidas del Área@(nodoActual is not null ? $": {nodoActual.Nombre}" : "")
-            </h3>
+            </h2>
             <small class="text-muted">Líneas de presupuesto y especificaciones</small>
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <div class="d-flex align-items-center gap-1">
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="d-flex align-items-center gap-1 bg-light px-2 py-1 rounded border">
                 <label class="small text-muted mb-0">Medidas:</label>
-                <select class="form-select form-select-sm" style="width: auto;" @bind="unidadMedida" @bind:after="AlCambiarUnidadMedida">
+                <select class="form-select form-select-sm border-0 bg-transparent fw-semibold" style="width: auto;" @bind="unidadMedida" @bind:after="AlCambiarUnidadMedida">
                     <option value="mm">mm</option>
                     <option value="cm">cm</option>
                     <option value="m">m</option>
                 </select>
             </div>
+
             @if (nodoActual is not null)
             {
-                <button class="btn btn-outline-secondary btn-sm" @onclick="VolverANodos">
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="VolverANodos">
                     Volver al Desglose
                 </button>
             }
+
             @if (!mostrarFormulario)
             {
-                <button class="btn btn-primary btn-sm" @onclick="AbrirFormularioNuevo">
+                <button type="button" class="btn btn-primary btn-sm" @onclick="AbrirFormularioNuevo">
                     + Nueva Partida
                 </button>
             }
         </div>
     </div>
+    <hr />
 
     @if (!string.IsNullOrEmpty(mensajeError))
     {
@@ -46,8 +52,8 @@
 
     @if (mostrarFormulario)
     {
-        <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-light fw-bold">
+        <div class="card mb-4 shadow-sm" style="border: 1px solid #d4e4ff;">
+            <div class="card-header fw-bold text-primary" style="background-color: #eef5ff; border-bottom: 1px solid #d4e4ff;">
                 @(idEditando.HasValue ? "Editar Partida" : "Nueva Partida")
             </div>
             <div class="card-body">
@@ -57,39 +63,39 @@
 
                     <div class="row g-2">
                         <div class="col-12 col-md-8">
-                            <label class="form-label small mb-1">Descripción *</label>
+                            <label class="form-label small fw-semibold mb-1">Descripción *</label>
                             <InputText class="form-control form-control-sm" @bind-Value="modeloFormulario.Descripcion" placeholder="Ej. Gabinete superior de cocina" />
                             <ValidationMessage For="@(() => modeloFormulario.Descripcion)" class="text-danger small" />
                         </div>
 
                         <div class="col-6 col-md-2">
-                            <label class="form-label small mb-1">Cantidad</label>
+                            <label class="form-label small fw-semibold mb-1">Cantidad</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="modeloFormulario.Cantidad" />
                             <ValidationMessage For="@(() => modeloFormulario.Cantidad)" class="text-danger small" />
                         </div>
 
                         <div class="col-6 col-md-2">
-                            <label class="form-label small mb-1">Orden</label>
+                            <label class="form-label small fw-semibold mb-1">Orden</label>
                             <InputNumber class="form-control form-control-sm" @bind-Value="modeloFormulario.Orden" />
                         </div>
 
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Material</label>
+                            <label class="form-label small fw-semibold mb-1">Material</label>
                             <InputText class="form-control form-control-sm" @bind-Value="modeloFormulario.Material" placeholder="Ej. Roble / MDF Hidrófugo" />
                         </div>
 
                         <div class="col-12 col-md-6">
-                            <label class="form-label small mb-1">Marca / Herrajes</label>
+                            <label class="form-label small fw-semibold mb-1">Marca / Herrajes</label>
                             <InputText class="form-control form-control-sm" @bind-Value="modeloFormulario.Marca" placeholder="Ej. Blum" />
                         </div>
 
                         <div class="col-12">
-                            <label class="form-label small mb-1">Especificación</label>
+                            <label class="form-label small fw-semibold mb-1">Especificación</label>
                             <InputTextArea class="form-control form-control-sm" rows="2" @bind-Value="modeloFormulario.Especificacion" placeholder="Detalles técnicos o acabados..." />
                         </div>
 
                         <div class="col-12 col-md-3">
-                            <label class="form-label small mb-1">Unidad de medida</label>
+                            <label class="form-label small fw-semibold mb-1">Unidad de medida</label>
                             <select class="form-select form-select-sm" @bind="unidadMedida" @bind:after="AlCambiarUnidadMedida">
                                 <option value="mm">Milímetros (mm)</option>
                                 <option value="cm">Centímetros (cm)</option>
@@ -98,50 +104,50 @@
                         </div>
 
                         <div class="col-4 col-md-3">
-                            <label class="form-label small mb-1">Ancho (@unidadMedida)</label>
+                            <label class="form-label small fw-semibold mb-1">Ancho (@unidadMedida)</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="anchoEntrada" @bind-Value:after="SincronizarMedidasAMilimetros" />
                             <ValidationMessage For="@(() => modeloFormulario.AnchoMm)" class="text-danger small" />
                         </div>
 
                         <div class="col-4 col-md-3">
-                            <label class="form-label small mb-1">Alto (@unidadMedida)</label>
+                            <label class="form-label small fw-semibold mb-1">Alto (@unidadMedida)</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="altoEntrada" @bind-Value:after="SincronizarMedidasAMilimetros" />
                             <ValidationMessage For="@(() => modeloFormulario.AltoMm)" class="text-danger small" />
                         </div>
 
                         <div class="col-4 col-md-3">
-                            <label class="form-label small mb-1">Profundidad (@unidadMedida)</label>
+                            <label class="form-label small fw-semibold mb-1">Profundidad (@unidadMedida)</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="profundidadEntrada" @bind-Value:after="SincronizarMedidasAMilimetros" />
                             <ValidationMessage For="@(() => modeloFormulario.ProfundidadMm)" class="text-danger small" />
                         </div>
 
                         <div class="col-12 col-md-4">
-                            <label class="form-label small mb-1">Total Línea (Precio) *</label>
+                            <label class="form-label small fw-semibold mb-1">Total Línea (Precio) *</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="modeloFormulario.TotalLinea" />
                             <ValidationMessage For="@(() => modeloFormulario.TotalLinea)" class="text-danger small" />
                         </div>
 
                         <div class="col-6 col-md-4">
-                            <label class="form-label small mb-1">Descuento</label>
+                            <label class="form-label small fw-semibold mb-1">Descuento</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="modeloFormulario.Descuento" />
                         </div>
 
                         <div class="col-6 col-md-4">
-                            <label class="form-label small mb-1">Costo Interno</label>
+                            <label class="form-label small fw-semibold mb-1">Costo Interno</label>
                             <InputNumber step="any" class="form-control form-control-sm" @bind-Value="modeloFormulario.CostoInterno" />
                         </div>
 
                         <div class="col-12">
-                            <label class="form-label small mb-1">Nota Interna (no visible al cliente)</label>
+                            <label class="form-label small fw-semibold mb-1">Nota Interna (no visible al cliente)</label>
                             <InputText class="form-control form-control-sm" @bind-Value="modeloFormulario.NotaInterna" />
                         </div>
                     </div>
 
                     <div class="mt-3 d-flex gap-2">
-                        <button type="submit" class="btn btn-success btn-sm" disabled="@guardando">
+                        <button type="submit" class="btn btn-success btn-sm px-3" disabled="@guardando">
                             @(guardando ? "Guardando..." : "Guardar")
                         </button>
-                        <button type="button" class="btn btn-secondary btn-sm" @onclick="CancelarFormulario" disabled="@guardando">
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3" @onclick="CancelarFormulario" disabled="@guardando">
                             Cancelar
                         </button>
                     </div>
@@ -152,96 +158,111 @@
 
     @if (cargando)
     {
-        <p class="text-muted">Cargando partidas...</p>
+        <div class="text-center my-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Cargando partidas...</p>
+        </div>
     }
     else if (partidas.Count == 0)
     {
-        <div class="alert alert-light border text-center text-muted">
-            No hay partidas registradas en esta área todavía.
+        <div class="alert alert-light border text-center py-4">
+            <p class="mb-1 fw-semibold">No hay partidas registradas en esta área todavía.</p>
+            <small class="text-muted">Usa el botón "+ Nueva Partida" para agregar la primera línea.</small>
         </div>
     }
     else
     {
-        <div class="table-responsive">
-            <table class="table table-sm table-bordered table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width: 50px;">#</th>
-                        <th>Descripción y Detalles</th>
-                        <th>Medidas (@unidadMedida)</th>
-                        <th class="text-end">Cant.</th>
-                        <th class="text-end">P. Unit.</th>
-                        <th class="text-end">Total Línea</th>
-                        <th style="width: 150px;" class="text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in partidas)
-                    {
-                        <tr>
-                            <td>@p.Orden</td>
-                            <td>
-                                <div class="fw-bold">@p.Descripcion</div>
+        @* 
+          Rendimiento y móvil: Tarjetas apiladas en lugar de <table> para evitar scroll horizontal en teléfonos
+          y mantener coherencia visual con el esquema azul suave de Proyectos.
+        *@
+        <div class="d-flex flex-column gap-2 mb-3">
+            @foreach (var p in partidas)
+            {
+                <div class="card shadow-sm" style="background-color: #f7faff; border: 1px solid #d4e4ff;">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div style="min-width: 0;">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="badge bg-white text-primary border border-primary-subtle">#@p.Orden</span>
+                                    <span class="fw-bold fs-6 text-break">@p.Descripcion</span>
+                                </div>
+
                                 @if (!string.IsNullOrWhiteSpace(p.Material) || !string.IsNullOrWhiteSpace(p.Marca))
                                 {
                                     <div class="small text-muted">
                                         @if (!string.IsNullOrWhiteSpace(p.Material))
                                         {
-                                            <span>Mat: @p.Material</span>
+                                            <span><strong>Material:</strong> @p.Material</span>
                                         }
                                         @if (!string.IsNullOrWhiteSpace(p.Marca))
                                         {
-                                            <span class="ms-2">Marca: @p.Marca</span>
+                                            <span class="@(!string.IsNullOrWhiteSpace(p.Material) ? "ms-2" : "")"><strong>Marca:</strong> @p.Marca</span>
                                         }
                                     </div>
                                 }
+
                                 @if (!string.IsNullOrWhiteSpace(p.Especificacion))
                                 {
-                                    <div class="small text-secondary">@p.Especificacion</div>
+                                    <div class="small text-secondary mt-1 text-break">@p.Especificacion</div>
                                 }
+
                                 @if (!string.IsNullOrWhiteSpace(p.NotaInterna))
                                 {
-                                    <div class="small text-warning-emphasis"><em>Nota int: @p.NotaInterna</em></div>
+                                    <div class="small text-warning-emphasis mt-1 text-break">
+                                        <em>Nota interna: @p.NotaInterna</em>
+                                    </div>
                                 }
-                            </td>
-                            <td class="small">
-                                @if (p.AnchoMm.HasValue || p.AltoMm.HasValue || p.ProfundidadMm.HasValue)
-                                {
-                                    <span>@FormatearMedidaTabla(p.AnchoMm) x @FormatearMedidaTabla(p.AltoMm) x @FormatearMedidaTabla(p.ProfundidadMm) @unidadMedida</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </td>
-                            <td class="text-end">@(p.Cantidad?.ToString("N2") ?? "-")</td>
-                            <td class="text-end">@(p.PrecioUnitario?.ToString("N2") ?? "-")</td>
-                            <td class="text-end fw-semibold">
-                                @p.TotalLinea.ToString("N2")
+                            </div>
+
+                            <div class="text-end text-nowrap">
+                                <div class="fw-bold fs-6 text-success">$@p.TotalLinea.ToString("N2")</div>
                                 @if (p.Descuento is > 0)
                                 {
-                                    <div class="small text-danger">Desc: -@p.Descuento.Value.ToString("N2")</div>
+                                    <div class="small text-danger">Desc: -$@p.Descuento.Value.ToString("N2")</div>
                                 }
-                            </td>
-                            <td class="text-center">
-                                <button class="btn btn-outline-primary btn-sm me-1" @onclick="() => AbrirFormularioEditar(p)">
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2 pt-2 border-top">
+                            <div class="d-flex flex-wrap gap-3 small text-muted">
+                                <span>
+                                    <strong>Cant:</strong> @(p.Cantidad?.ToString("N2") ?? "-")
+                                </span>
+                                <span>
+                                    <strong>P. Unit:</strong> @(p.PrecioUnitario.HasValue ? $"${p.PrecioUnitario.Value:N2}" : "-")
+                                </span>
+                                @if (p.AnchoMm.HasValue || p.AltoMm.HasValue || p.ProfundidadMm.HasValue)
+                                {
+                                    <span>
+                                        <strong>Medidas:</strong> @FormatearMedidaTabla(p.AnchoMm) x @FormatearMedidaTabla(p.AltoMm) x @FormatearMedidaTabla(p.ProfundidadMm) @unidadMedida
+                                    </span>
+                                }
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" @onclick="() => AbrirFormularioEditar(p)">
                                     Editar
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm" @onclick="() => EliminarAsync(p.Id)">
+                                <button type="button" class="btn btn-outline-danger btn-sm" @onclick="() => EliminarAsync(p.Id)">
                                     Borrar
                                 </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-                <tfoot class="table-light fw-bold">
-                    <tr>
-                        <td colspan="5" class="text-end">Subtotal Partidas:</td>
-                        <td class="text-end">@partidas.Sum(x => x.TotalLinea - (x.Descuento ?? 0)).ToString("N2")</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="card shadow-sm mb-4" style="background-color: #eef5ff; border: 1px solid #d4e4ff;">
+            <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-primary">Subtotal Partidas (@partidas.Count):</span>
+                <span class="fs-5 fw-bold text-success">
+                    $@partidas.Sum(x => x.TotalLinea - (x.Descuento ?? 0)).ToString("N2")
+                </span>
+            </div>
         </div>
     }
 </div>
