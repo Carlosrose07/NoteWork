@@ -454,6 +454,10 @@ namespace NoteWork.Api.Migrations
                     b.Property<Guid?>("ClienteId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("DescuentoValor")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<bool>("Eliminado")
                         .HasColumnType("boolean");
 
@@ -482,6 +486,9 @@ namespace NoteWork.Api.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.Property<int>("Tipo")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TipoDescuento")
                         .HasColumnType("integer");
 
                     b.Property<int>("UnidadMedida")

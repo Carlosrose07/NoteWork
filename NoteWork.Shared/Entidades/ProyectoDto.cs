@@ -14,5 +14,7 @@ public class ProyectoDto
     public TipoProyecto Tipo { get; set; }
     public EstadoProyecto Estado { get; set; }
     public UnidadMedida UnidadMedida { get; set; }
+    public TipoDescuento TipoDescuento { get; set; } = TipoDescuento.Monto;
+    public decimal DescuentoValor { get; set; } = 0m;
     public DateTime FechaCreacion { get; set; }
 }

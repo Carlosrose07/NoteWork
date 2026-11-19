@@ -69,6 +69,7 @@ public class AppDbContext : IdentityDbContext<Usuario, IdentityRole<Guid>, Guid>
         // --- PRECISIÓN DEL DINERO ---
         // numeric(18,2) en PostgreSQL: hasta 16 dígitos enteros y 2 decimales.
         // Nunca usamos double/float para dinero porque pierden exactitud.
+        modelBuilder.Entity<Proyecto>().Property(p => p.DescuentoValor).HasPrecision(18, 2);
         modelBuilder.Entity<Partida>().Property(p => p.TotalLinea).HasPrecision(18, 2);
         modelBuilder.Entity<Partida>().Property(p => p.Descuento).HasPrecision(18, 2);
         modelBuilder.Entity<Partida>().Property(p => p.CostoInterno).HasPrecision(18, 2);

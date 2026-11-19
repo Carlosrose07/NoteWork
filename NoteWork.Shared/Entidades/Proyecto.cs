@@ -40,6 +40,11 @@ public class Proyecto : EntidadBase
     // Va en UTC igual que las demás fechas, por el requisito de PostgreSQL.
     public DateTime? FechaValidez { get; set; }
 
+    // NUEVO (D1): descuento general del proyecto, aplicado al subtotal en el Resumen.
+    // Si DescuentoValor es 0, no se aplica descuento.
+    public TipoDescuento TipoDescuento { get; set; } = TipoDescuento.Monto;
+    public decimal DescuentoValor { get; set; } = 0m;
+
     // Notas internas del proyecto. No salen en el PDF.
     public string? Notas { get; set; }
 
@@ -55,4 +60,14 @@ public class Proyecto : EntidadBase
     // Por qué: una sola consulta trae todo el proyecto y el armado del árbol
     // se hace después en memoria. Es mucho más liviano que una consulta por nivel.
     public List<Nodo> Nodos { get; set; } = new();
+}
+
+/// <summary>
+/// Indica si el descuento general del proyecto se interpreta como dinero fijo ($)
+/// o como porcentaje (%) sobre el subtotal.
+/// </summary>
+public enum TipoDescuento
+{
+    Monto = 0,
+    Porcentaje = 1
 }

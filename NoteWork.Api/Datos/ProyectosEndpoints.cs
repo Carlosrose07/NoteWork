@@ -49,6 +49,8 @@ public static class ProyectosEndpoints
                     Tipo = p.Tipo,
                     Estado = p.Estado,
                     UnidadMedida = p.UnidadMedida,
+                    TipoDescuento = p.TipoDescuento,
+                    DescuentoValor = p.DescuentoValor,
                     FechaCreacion = p.FechaCreacion
                 })
                 .ToListAsync();
@@ -79,6 +81,8 @@ public static class ProyectosEndpoints
                 Tipo = proyecto.Tipo,
                 Estado = proyecto.Estado,
                 UnidadMedida = proyecto.UnidadMedida,
+                TipoDescuento = proyecto.TipoDescuento,
+                DescuentoValor = proyecto.DescuentoValor,
                 Notas = proyecto.Notas
             };
 
@@ -93,6 +97,9 @@ public static class ProyectosEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
+            if (!DescuentoEsValido(dto.TipoDescuento, dto.DescuentoValor))
+                return DescuentoInvalido();
+
             // CAMBIO (B1): el dueño del proyecto nuevo es quien lo crea (también si es admin).
             // El cliente elegido debe ser de ese mismo dueño.
             if (!await ClienteEsValidoAsync(db, ctx, dto.ClienteId, ctx.UsuarioId))
@@ -105,6 +112,8 @@ public static class ProyectosEndpoints
                 Tipo = dto.Tipo,
                 Estado = dto.Estado,
                 UnidadMedida = dto.UnidadMedida,
+                TipoDescuento = dto.TipoDescuento,
+                DescuentoValor = RedondearMonto(dto.DescuentoValor),
                 Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim(),
                 EmpresaId = ctx.EmpresaId,
                 UsuarioId = ctx.UsuarioId // CAMBIO (B1): asigna el dueño
@@ -123,6 +132,9 @@ public static class ProyectosEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
+            if (!DescuentoEsValido(dto.TipoDescuento, dto.DescuentoValor))
+                return DescuentoInvalido();
+
             var proyecto = await db.Proyectos
                 .VisiblesPara(ctx)
                 .FirstOrDefaultAsync(p => p.Id == id);
@@ -139,6 +151,8 @@ public static class ProyectosEndpoints
             proyecto.Tipo = dto.Tipo;
             proyecto.Estado = dto.Estado;
             proyecto.UnidadMedida = dto.UnidadMedida;
+            proyecto.TipoDescuento = dto.TipoDescuento;
+            proyecto.DescuentoValor = RedondearMonto(dto.DescuentoValor);
             proyecto.Notas = string.IsNullOrWhiteSpace(dto.Notas) ? null : dto.Notas.Trim();
             // CAMBIO (B1): aquí NO se toca proyecto.UsuarioId. El dueño nunca cambia.
 
@@ -170,20 +184,41 @@ public static class ProyectosEndpoints
             var ctx = await db.ObtenerContextoAsync(user);
             if (ctx is null) return Results.Unauthorized();
 
-            // CAMBIO (B1): primero se comprueba que el proyecto sea visible para este usuario.
-            var proyectoExiste = await db.Proyectos
+            // CAMBIO (B1 + D1): comprueba visibilidad y trae el descuento configurado en una sola consulta.
+            var proyecto = await db.Proyectos
+                .AsNoTracking()
                 .VisiblesPara(ctx)
-                .AnyAsync(p => p.Id == id);
-            if (!proyectoExiste) return Results.NotFound();
+                .Where(p => p.Id == id)
+                .Select(p => new { p.TipoDescuento, p.DescuentoValor })
+                .FirstOrDefaultAsync();
+
+            if (proyecto is null) return Results.NotFound();
 
             // CAMBIO (B1): se quitó .Where(p => !p.Eliminado): el HasQueryFilter de
             // AppDbContext ya excluye nodos y partidas eliminados.
-            var totalGeneral = await db.Nodos
+            var subtotal = RedondearMonto(await db.Nodos
                 .Where(n => n.ProyectoId == id)
                 .SelectMany(n => n.Partidas)
-                .SumAsync(p => (decimal?)p.TotalLinea) ?? 0m;
+                .SumAsync(p => (decimal?)p.TotalLinea) ?? 0m);
 
-            return Results.Ok(new { TotalGeneral = totalGeneral });
+            var montoDescuento = proyecto.TipoDescuento == TipoDescuento.Porcentaje
+                ? RedondearMonto(subtotal * (proyecto.DescuentoValor / 100m))
+                : RedondearMonto(proyecto.DescuentoValor);
+
+            // Regla de seguridad: el descuento nunca puede superar el subtotal ni dejar total negativo.
+            if (montoDescuento < 0m) montoDescuento = 0m;
+            if (montoDescuento > subtotal) montoDescuento = subtotal;
+
+            var totalGeneral = RedondearMonto(subtotal - montoDescuento);
+
+            return Results.Ok(new
+            {
+                Subtotal = subtotal,
+                TipoDescuento = proyecto.TipoDescuento,
+                DescuentoValor = proyecto.DescuentoValor,
+                MontoDescuento = montoDescuento,
+                TotalGeneral = totalGeneral
+            });
         });
     }
 
@@ -210,6 +245,19 @@ public static class ProyectosEndpoints
             ["ClienteId"] = new[] { "El cliente seleccionado no existe o no está disponible." }
         });
 
-    // CAMBIO (B1): se eliminó ObtenerEmpresaIdAsync de este archivo.
-    // Ahora todos los endpoints usan db.ObtenerContextoAsync(user) (ContextoUsuario.cs).
+    private static bool DescuentoEsValido(TipoDescuento tipo, decimal valor)
+    {
+        if (valor < 0m) return false;
+        if (tipo == TipoDescuento.Porcentaje && valor > 100m) return false;
+        return true;
+    }
+
+    private static IResult DescuentoInvalido() =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["DescuentoValor"] = new[] { "El descuento en porcentaje debe estar entre 0 y 100." }
+        });
+
+    private static decimal RedondearMonto(decimal valor) =>
+        Math.Round(valor, 2, MidpointRounding.AwayFromZero);
 }

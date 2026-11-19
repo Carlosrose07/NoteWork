@@ -23,6 +23,13 @@ public class ProyectoCrearDto
     [EnumDataType(typeof(UnidadMedida), ErrorMessage = "La unidad de medida no es válida.")]
     public UnidadMedida UnidadMedida { get; set; } = UnidadMedida.Pulgadas;
 
+    // NUEVO (D1): descuento general del proyecto (monto fijo o porcentaje).
+    [EnumDataType(typeof(TipoDescuento), ErrorMessage = "El tipo de descuento no es válido.")]
+    public TipoDescuento TipoDescuento { get; set; } = TipoDescuento.Monto;
+
+    [Range(0, 999999999999, ErrorMessage = "El descuento no puede ser negativo.")]
+    public decimal DescuentoValor { get; set; } = 0m;
+
     [MaxLength(500, ErrorMessage = "Las notas son muy largas.")]
     public string? Notas { get; set; }
 }

@@ -36,8 +36,33 @@
     else if (resumen != null)
     {
         <div class="card shadow-sm mb-4">
-            <div class="card-body bg-light text-center">
-                <h3 class="card-title text-success mb-0">Total General: $@resumen.TotalGeneral.ToString("N2")</h3>
+            <div class="card-body bg-light">
+                @if (resumen.MontoDescuento > 0)
+                {
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="text-muted">Subtotal:</span>
+                        <span class="fw-semibold">$@resumen.Subtotal.ToString("N2")</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center text-danger mb-2">
+                        <span>
+                            @(resumen.TipoDescuento == TipoDescuento.Porcentaje
+                                ? $"Descuento ({resumen.DescuentoValor:0.##}%):"
+                                : "Descuento:")
+                        </span>
+                        <span class="fw-semibold">-$@resumen.MontoDescuento.ToString("N2")</span>
+                    </div>
+                    <hr class="my-2" />
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h3 class="card-title text-success mb-0">Total General:</h3>
+                        <h3 class="card-title text-success mb-0">$@resumen.TotalGeneral.ToString("N2")</h3>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center">
+                        <h3 class="card-title text-success mb-0">Total General: $@resumen.TotalGeneral.ToString("N2")</h3>
+                    </div>
+                }
             </div>
         </div>
 
@@ -153,6 +178,10 @@
 
     public class ResumenCotizacionTempDto
     {
+        public decimal Subtotal { get; set; }
+        public TipoDescuento TipoDescuento { get; set; }
+        public decimal DescuentoValor { get; set; }
+        public decimal MontoDescuento { get; set; }
         public decimal TotalGeneral { get; set; }
     }
 }

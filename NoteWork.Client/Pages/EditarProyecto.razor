@@ -91,6 +91,32 @@ else
             <ValidationMessage For="@(() => modelo.UnidadMedida)" />
         </div>
 
+        @* NUEVO (D1): descuento general del proyecto (sin descuento, monto fijo o porcentaje) *@
+        <div class="row g-2 mb-3">
+            <div class="@(opcionDescuento == "Ninguno" ? "col-12" : "col-6")">
+                <label class="form-label">Tipo de descuento</label>
+                <select class="form-select" value="@opcionDescuento" @onchange="AlCambiarOpcionDescuento">
+                    <option value="Ninguno">Sin descuento</option>
+                    <option value="Monto">Monto fijo ($)</option>
+                    <option value="Porcentaje">Porcentaje (%)</option>
+                </select>
+            </div>
+
+            @if (opcionDescuento != "Ninguno")
+            {
+                <div class="col-6">
+                    <label class="form-label">
+                        @(opcionDescuento == "Porcentaje" ? "Descuento (%)" : "Descuento ($)")
+                    </label>
+                    <InputNumber @bind-Value="descuentoInput"
+                                 class="form-control"
+                                 min="0"
+                                 max="@(opcionDescuento == "Porcentaje" ? 100 : null)"
+                                 step="0.01" />
+                </div>
+            }
+        </div>
+
         <div class="mb-3">
             <label class="form-label">Notas</label>
             <InputTextArea @bind-Value="modelo.Notas" class="form-control" />
@@ -123,6 +149,10 @@ else
     private ProyectoEditarDto modelo = new();
     private List<ClienteResumen> clientes = new();
 
+    // Control de interfaz para el descuento (evita errores al vaciar la casilla)
+    private string opcionDescuento = "Ninguno";
+    private decimal? descuentoInput;
+
     // Banderas de estado de la pantalla
     private bool cargando = true;          // true mientras se piden los datos
     private bool guardando;                // true mientras se envía el guardado (bloquea el doble toque)
@@ -133,6 +163,26 @@ else
     protected override async Task OnInitializedAsync()
     {
         await CargarAsync();
+    }
+
+    private void AlCambiarOpcionDescuento(ChangeEventArgs e)
+    {
+        opcionDescuento = e.Value?.ToString() ?? "Ninguno";
+
+        if (opcionDescuento == "Ninguno")
+        {
+            modelo.TipoDescuento = TipoDescuento.Monto;
+            modelo.DescuentoValor = 0m;
+            descuentoInput = null;
+        }
+        else if (opcionDescuento == "Porcentaje")
+        {
+            modelo.TipoDescuento = TipoDescuento.Porcentaje;
+        }
+        else
+        {
+            modelo.TipoDescuento = TipoDescuento.Monto;
+        }
     }
 
     /// <summary>
@@ -171,6 +221,19 @@ else
                 else
                 {
                     modelo = proyecto;
+
+                    if (modelo.DescuentoValor <= 0m)
+                    {
+                        opcionDescuento = "Ninguno";
+                        descuentoInput = null;
+                    }
+                    else
+                    {
+                        opcionDescuento = modelo.TipoDescuento == TipoDescuento.Porcentaje
+                            ? "Porcentaje"
+                            : "Monto";
+                        descuentoInput = modelo.DescuentoValor;
+                    }
                 }
             }
         }
@@ -189,6 +252,32 @@ else
         // Segunda defensa contra el doble toque (la primera es el botón deshabilitado).
         // También cubre enviar el formulario con la tecla Enter.
         if (guardando) return;
+
+        if (opcionDescuento == "Ninguno")
+        {
+            modelo.TipoDescuento = TipoDescuento.Monto;
+            modelo.DescuentoValor = 0m;
+        }
+        else
+        {
+            var valor = descuentoInput ?? 0m;
+            if (valor < 0m)
+            {
+                errorGuardar = "El descuento no puede ser negativo.";
+                return;
+            }
+
+            if (opcionDescuento == "Porcentaje" && valor > 100m)
+            {
+                errorGuardar = "El descuento en porcentaje no puede superar el 100%.";
+                return;
+            }
+
+            modelo.TipoDescuento = opcionDescuento == "Porcentaje"
+                ? TipoDescuento.Porcentaje
+                : TipoDescuento.Monto;
+            modelo.DescuentoValor = valor;
+        }
 
         guardando = true;
         errorGuardar = null;
@@ -211,7 +300,9 @@ else
                     Notas = modelo.Notas,
                     Tipo = modelo.Tipo,
                     Estado = modelo.Estado,
-                    UnidadMedida = modelo.UnidadMedida
+                    UnidadMedida = modelo.UnidadMedida,
+                    TipoDescuento = modelo.TipoDescuento,
+                    DescuentoValor = modelo.DescuentoValor
                 };
                 (exito, error) = await ServicioProyectos.CrearProyectoAsync(crearDto);
             }
