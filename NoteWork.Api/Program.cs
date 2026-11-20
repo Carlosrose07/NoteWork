@@ -1,10 +1,13 @@
-using System.Security.Claims;                          // CAMBIO (Bloque B): para leer el Id del usuario del token
+using System.IO.Compression;
+using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;             // CAMBIO (Bloque B): memoria interna de .NET (IMemoryCache)
+using Microsoft.Extensions.Caching.Memory;
 using NoteWork.Api.Datos;
-using NoteWork.Shared.Entidades;
 using NoteWork.Api.Endpoints;
+using NoteWork.Shared.Entidades;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,9 +20,34 @@ var cadenaConexion = builder.Configuration.GetConnectionString("NoteWorkDb")
 builder.Services.AddDbContext<AppDbContext>(opciones =>
     opciones.UseNpgsql(cadenaConexion));
 
-// CAMBIO (Bloque B): memoria interna para recordar unos segundos que un usuario
-// está activo (ver el filtro más abajo). Viene incluida en .NET: no instala nada.
+// Memoria interna para recordar unos segundos que un usuario está activo.
 builder.Services.AddMemoryCache();
+
+// --- RENDIMIENTO DE RED: JSON LIGERO Y COMPRESIÓN BROTLI / GZIP ---
+// Omite propiedades nulas en las respuestas JSON para reducir el tamaño del payload.
+builder.Services.ConfigureHttpJsonOptions(opciones =>
+{
+    opciones.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+
+// Comprime respuestas HTTP (JSON, texto, etc.) para ahorrar datos móviles y mejorar latencia.
+builder.Services.AddResponseCompression(opciones =>
+{
+    opciones.EnableForHttps = true;
+    opciones.Providers.Add<BrotliCompressionProvider>();
+    opciones.Providers.Add<GzipCompressionProvider>();
+});
+
+// Nivel Fastest: buena compresión con consumo mínimo de CPU en Render.
+builder.Services.Configure<BrotliCompressionProviderOptions>(opciones =>
+{
+    opciones.Level = CompressionLevel.Fastest;
+});
+
+builder.Services.Configure<GzipCompressionProviderOptions>(opciones =>
+{
+    opciones.Level = CompressionLevel.Fastest;
+});
 
 // --- IDENTITY (usuarios, contraseñas y login) ---
 builder.Services.AddIdentityApiEndpoints<Usuario>(opciones =>
@@ -51,7 +79,6 @@ builder.Services.AddCors(opciones =>
     });
 });
 
-builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -138,27 +165,17 @@ if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseResponseCompression();
 app.UseCors("PermitirClient");
 
 app.UseAuthentication();
 
-// --- CAMBIO (Bloque B): FILTRO "USUARIO ACTIVO" ---
+// --- FILTRO "USUARIO ACTIVO" ---
 // Va justo DESPUÉS de UseAuthentication (ya sabemos quién llama) y ANTES de
 // UseAuthorization (antes de decidir qué puede hacer). Así una cuenta desactivada
 // queda fuera de TODOS los endpoints protegidos, no solo del login.
-//
-// Por qué hace falta: el token de sesión sigue siendo válido hasta que vence, y el
-// login solo se revisa al entrar. Sin este filtro, alguien desactivado que ya tenía
-// la app abierta seguiría trabajando.
-//
-// Rendimiento (Neon y Render gratis): consultar la base en CADA petición sería caro.
-// Por eso, si el usuario está activo, lo recordamos 15 segundos en memoria.
-//   - Un usuario desactivado puede seguir hasta 15 segundos; luego recibe 401.
-//   - Solo guardamos en memoria el resultado "activo". Si está desactivado NO se
-//     guarda, así al reactivarlo puede entrar de inmediato.
 app.Use(async (contexto, siguiente) =>
 {
-    // Las rutas sin sesión (como /salud o el login) pasan sin revisar nada.
     if (contexto.User.Identity?.IsAuthenticated == true)
     {
         var idTexto = contexto.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -182,7 +199,6 @@ app.Use(async (contexto, siguiente) =>
                 .Select(u => (bool?)u.Activo)
                 .FirstOrDefaultAsync(contexto.RequestAborted);
 
-            // Desactivado o inexistente -> 401, igual que una sesión no válida.
             if (activo != true)
             {
                 contexto.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -195,7 +211,6 @@ app.Use(async (contexto, siguiente) =>
 
     await siguiente();
 });
-// --- FIN DEL FILTRO ---
 
 app.UseAuthorization();
 
@@ -203,12 +218,10 @@ app.UseAuthorization();
 app.MapGet("/salud", () => Results.Ok("ok"));
 
 app.MapCuentaEndpoints();
-app.MapUsuariosEndpoints();   // CAMBIO (Bloque B): gestión de usuarios (solo Admin)
+app.MapUsuariosEndpoints();
 app.MapClientesEndpoints();
 app.MapProyectosEndpoints();
 app.MapNodosEndpoints();
 app.MapPartidasEndpoints();
-
-app.MapControllers();
 
 app.Run();
