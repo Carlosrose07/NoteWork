@@ -506,6 +506,519 @@ namespace NoteWork.Api.Migrations
                     b.ToTable("Proyectos");
                 });
 
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.MaterialCatalogItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ColorOptions")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<decimal?>("CommercialHeightInches")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("CommercialLengthInches")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("CommercialWidthInches")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal>("DefaultWastePercent")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MaterialType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Code");
+
+                    b.HasIndex("EmpresaId", "MaterialType");
+
+                    b.ToTable("MaterialCatalog");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("DefaultUnit")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("UsesDepth")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("UsesDoors")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("UsesDrawers")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("UsesLeaves")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("UsesLowTrack")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("UsesShelves")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Code");
+
+                    b.HasIndex("EmpresaId", "SortOrder");
+
+                    b.ToTable("ProductCategories");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductCutRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConditionJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Dim1Axis")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Dim1CustomDivisor")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("numeric(10,4)");
+
+                    b.Property<int>("Dim1DivisorSource")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Dim1OffsetSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Dim1ThicknessMultiplier")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Dim2Axis")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Dim2CustomDivisor")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("numeric(10,4)");
+
+                    b.Property<int>("Dim2DivisorSource")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Dim2OffsetSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Dim2ThicknessMultiplier")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("MeasureMode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PartName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("ProductModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("QuantityFactor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuantityMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId");
+
+                    b.HasIndex("MaterialId");
+
+                    b.HasIndex("ProductModelId", "SortOrder");
+
+                    b.ToTable("ProductCutRules");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductHardwareRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CalculationBasis")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ConditionJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Factor")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("numeric(12,4)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId");
+
+                    b.HasIndex("MaterialId");
+
+                    b.HasIndex("ProductModelId", "SortOrder");
+
+                    b.ToTable("ProductHardwareRules");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("DefaultBoardThicknessSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DefaultLaborMode")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("DefaultLaborValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("DefaultMarginPercent")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("EmpresaId", "Code");
+
+                    b.HasIndex("EmpresaId", "CategoryId", "SortOrder");
+
+                    b.ToTable("ProductModels");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.WorkOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("CustomerPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("OrderType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PricingSnapshotJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SubtotalLabor")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubtotalMaterials")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TaxRatePercent")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<decimal>("TotalQuoteAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("EmpresaId", "OrderNumber");
+
+                    b.HasIndex("EmpresaId", "UsuarioId", "FechaCreacion");
+
+                    b.ToTable("WorkOrders");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.WorkOrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AreaNodeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("BoardThicknessOverrideSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("CalculatedLineTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("CalculatedUnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("CustomMarginPercent")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<int?>("DepthSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DoorCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DrawerCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HeightSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsLowTrack")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LeafCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LineOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("MaterialColor")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("ProductModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShelfCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WidthSixteenths")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AreaNodeId");
+
+                    b.HasIndex("EmpresaId");
+
+                    b.HasIndex("ProductModelId");
+
+                    b.HasIndex("WorkOrderId", "LineOrder");
+
+                    b.ToTable("WorkOrderItems");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -592,6 +1105,98 @@ namespace NoteWork.Api.Migrations
                         .HasForeignKey("ClienteId");
 
                     b.Navigation("Cliente");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductCutRule", b =>
+                {
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.MaterialCatalogItem", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.ProductModel", "ProductModel")
+                        .WithMany()
+                        .HasForeignKey("ProductModelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("ProductModel");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductHardwareRule", b =>
+                {
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.MaterialCatalogItem", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.ProductModel", "ProductModel")
+                        .WithMany()
+                        .HasForeignKey("ProductModelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("ProductModel");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.ProductModel", b =>
+                {
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.ProductCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.WorkOrder", b =>
+                {
+                    b.HasOne("NoteWork.Shared.Entidades.Cliente", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("NoteWork.Shared.Entidades.Proyecto", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("NoteWork.Shared.Entidades.Universal.WorkOrderItem", b =>
+                {
+                    b.HasOne("NoteWork.Shared.Entidades.Nodo", "AreaNode")
+                        .WithMany()
+                        .HasForeignKey("AreaNodeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.ProductModel", "ProductModel")
+                        .WithMany()
+                        .HasForeignKey("ProductModelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NoteWork.Shared.Entidades.Universal.WorkOrder", "WorkOrder")
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AreaNode");
+
+                    b.Navigation("ProductModel");
+
+                    b.Navigation("WorkOrder");
                 });
 
             modelBuilder.Entity("NoteWork.Shared.Entidades.Cliente", b =>
