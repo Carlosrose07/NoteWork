@@ -60,6 +60,8 @@ builder.Services.AddIdentityApiEndpoints<Usuario>(opciones =>
     // Le dice a Identity que guarde usuarios y roles en NUESTRA base.
     .AddEntityFrameworkStores<AppDbContext>();
 
+builder.Services.AddAuthorization();
+
 // --- CORS ---
 // Las direcciones permitidas salen de la configuración "Cors:OrigenesPermitidos".
 // En el servidor se define con la variable Cors__OrigenesPermitidos__0 (y __1, etc.).
@@ -153,6 +155,10 @@ var app = builder.Build();
 
         await usuarios.AddToRoleAsync(usuario, "Admin");
     }
+
+    // --- 4. CATÁLOGO SEMILLA DEL MOTOR UNIVERSAL ---
+    // Siembra Ventanas, Puertas, Gabinetes y Closets si la empresa aún no tiene catálogo.
+    await SemillaCatalogoUniversal.SembrarSiEstaVacioAsync(db, empresa.Id);
 }
 // --- FIN DE DATOS INICIALES ---
 
@@ -223,5 +229,7 @@ app.MapClientesEndpoints();
 app.MapProyectosEndpoints();
 app.MapNodosEndpoints();
 app.MapPartidasEndpoints();
+app.MapCatalogoUniversalEndpoints();
+app.MapWorkOrdersEndpoints();
 
 app.Run();
