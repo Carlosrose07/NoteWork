@@ -1,0 +1,821 @@
+﻿@page "/catalogo"
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Motor
+@using NoteWork.Client.Servicios
+
+@attribute [Authorize(Roles = "Admin")]
+
+@inject ServicioCatalogoUniversal ServicioCatalogo
+
+<PageTitle>Catálogo Universal - NoteWork</PageTitle>
+
+<div class="container mt-4 mb-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h2 class="mb-0 text-primary fw-bold">Catálogo Universal</h2>
+            <small class="text-muted">Precios de materiales, mano de obra y márgenes (Solo Admin)</small>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                @onclick="() => CargarCatalogoAsync(forzar: true)" disabled="@_cargando">
+            Recargar
+        </button>
+    </div>
+    <hr />
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center" role="alert">
+            <span>@_error</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_mensajeOk))
+    {
+        <div class="alert alert-success py-2 d-flex justify-content-between align-items-center" role="alert">
+            <span>@_mensajeOk</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _mensajeOk = null"></button>
+        </div>
+    }
+
+    @if (_cargando && _paquete is null)
+    {
+        <div class="text-center my-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Cargando catálogo...</p>
+        </div>
+    }
+    else if (_paquete is not null)
+    {
+        @* Pestañas principales *@
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button"
+                    class="btn @(_pestana == PestanaCatalogo.Materiales ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaCatalogo.Materiales">
+                Materiales (@_paquete.Materials.Count)
+            </button>
+            <button type="button"
+                    class="btn @(_pestana == PestanaCatalogo.Modelos ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaCatalogo.Modelos">
+                Modelos (@_paquete.Models.Count)
+            </button>
+        </div>
+
+        @* ===================================================================== *@
+        @* PESTAÑA 1: MATERIALES Y PRECIOS                                       *@
+        @* ===================================================================== *@
+        @if (_pestana == PestanaCatalogo.Materiales)
+        {
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <div class="d-flex flex-wrap gap-1">
+                    <button type="button"
+                            class="btn btn-sm @(_filtroTipoMaterial is null ? "btn-dark" : "btn-outline-secondary")"
+                            @onclick="() => _filtroTipoMaterial = null">
+                        Todos
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm @(_filtroTipoMaterial == MaterialType.Linear1D ? "btn-dark" : "btn-outline-secondary")"
+                            @onclick="() => _filtroTipoMaterial = MaterialType.Linear1D">
+                        Perfiles 1D
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm @(_filtroTipoMaterial == MaterialType.Sheet2D ? "btn-dark" : "btn-outline-secondary")"
+                            @onclick="() => _filtroTipoMaterial = MaterialType.Sheet2D">
+                        Planchas 2D
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm @(_filtroTipoMaterial == MaterialType.Unit ? "btn-dark" : "btn-outline-secondary")"
+                            @onclick="() => _filtroTipoMaterial = MaterialType.Unit">
+                        Herrajes
+                    </button>
+                </div>
+
+                <button type="button" class="btn btn-success btn-sm" @onclick="AbrirNuevoMaterial">
+                    @(_mostrarFormMaterial && _editandoMaterialId is null ? "Cancelar" : "+ Nuevo Material")
+                </button>
+            </div>
+
+            <div class="input-group mb-3 shadow-sm">
+                <input type="text" class="form-control" placeholder="Buscar material por código o nombre..."
+                       @bind="_buscarMaterial" @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(_buscarMaterial))
+                {
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => _buscarMaterial = string.Empty">
+                        Limpiar
+                    </button>
+                }
+            </div>
+
+            @* Formulario inline de Material *@
+            @if (_mostrarFormMaterial)
+            {
+                <div class="card border-success shadow-sm mb-3">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-success mb-3">
+                            @(_editandoMaterialId.HasValue ? "Editar material" : "Nuevo material")
+                        </h6>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-5 col-md-3">
+                                <label class="form-label form-label-sm fw-semibold">Código *</label>
+                                <input type="text" class="form-control" @bind="_matCode" maxlength="40" placeholder="Ej: PERF-P65" />
+                            </div>
+                            <div class="col-7 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Nombre *</label>
+                                <input type="text" class="form-control" @bind="_matName" maxlength="120" placeholder="Ej: Marco P-65 Aluminio" />
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Tipo *</label>
+                                <select class="form-select" @bind="_matType">
+                                    <option value="@MaterialType.Linear1D">Perfil / Barra 1D</option>
+                                    <option value="@MaterialType.Sheet2D">Plancha / Cristal 2D</option>
+                                    <option value="@MaterialType.Unit">Herraje / Unidad</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-6 col-md-3">
+                                <label class="form-label form-label-sm fw-semibold">Costo Unit. (RD$) *</label>
+                                <input type="number" step="0.01" min="0" class="form-control" @bind="_matUnitCost" />
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label form-label-sm fw-semibold">Desperdicio (%)</label>
+                                <input type="number" step="0.5" min="0" max="100" class="form-control" @bind="_matWaste" />
+                            </div>
+
+                            @if (_matType == MaterialType.Linear1D)
+                            {
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label form-label-sm fw-semibold">Largo comercial barra (pulg.)</label>
+                                    <input type="number" step="0.5" min="0" class="form-control"
+                                           @bind="_matLengthIn" placeholder="Ej: 252 (21 pies). Vacío = por pie" />
+                                </div>
+                            }
+                            else if (_matType == MaterialType.Sheet2D)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Ancho plancha (pulg.)</label>
+                                    <input type="number" step="0.5" min="0" class="form-control"
+                                           @bind="_matWidthIn" placeholder="Ej: 48" />
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Alto plancha (pulg.)</label>
+                                    <input type="number" step="0.5" min="0" class="form-control"
+                                           @bind="_matHeightIn" placeholder="Ej: 96" />
+                                </div>
+                            }
+                        </div>
+
+                        <div class="row g-2 mb-3 align-items-end">
+                            <div class="col-12 col-md-8">
+                                <label class="form-label form-label-sm fw-semibold">Colores disponibles (opcional)</label>
+                                <input type="text" class="form-control" @bind="_matColors" maxlength="200"
+                                       placeholder="Ej: Blanco, Bronce, Negro, Natural" />
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chkMatActivo" @bind="_matActive" />
+                                    <label class="form-check-label fw-semibold" for="chkMatActivo">
+                                        Material activo
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary"
+                                    @onclick="CerrarFormMaterial" disabled="@_guardando">
+                                Cancelar
+                            </button>
+                            <button type="button" class="btn btn-success"
+                                    @onclick="GuardarMaterialAsync" disabled="@_guardando">
+                                @(_guardando ? "Guardando..." : "Guardar material")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* Lista de materiales *@
+            <div class="d-flex flex-column gap-2">
+                @foreach (var mat in MaterialesFiltrados)
+                {
+                    <div class="p-3 rounded shadow-sm bg-white border @(mat.IsActive ? "" : "opacity-75 bg-light")">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div style="min-width: 0;">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="fw-bold text-break">@mat.Name</span>
+                                    <span class="badge bg-light text-dark border">@mat.Code</span>
+                                    <span class="badge @ClaseTipoMaterial(mat.MaterialType)">@EtiquetaTipoMaterial(mat.MaterialType)</span>
+                                    @if (!mat.IsActive)
+                                    {
+                                        <span class="badge bg-secondary">Inactivo</span>
+                                    }
+                                </div>
+                                <small class="text-muted d-block mt-1">
+                                    Formato: @FormatoComercial(mat) · Desperdicio: @mat.DefaultWastePercent.ToString("0.#")%
+                                </small>
+                            </div>
+
+                            <div class="text-end text-nowrap">
+                                <div class="fw-bold text-success">RD$ @mat.UnitCost.ToString("N2")</div>
+                                <div class="d-flex gap-1 justify-content-end mt-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            @onclick="() => EditarMaterial(mat)">
+                                        Editar
+                                    </button>
+                                    @if (_confirmarBorrarMaterialId == mat.Id)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                                @onclick="() => BorrarMaterialAsync(mat.Id)" disabled="@_guardando">
+                                            Confirmar
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                @onclick="() => _confirmarBorrarMaterialId = null" disabled="@_guardando">
+                                            No
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => _confirmarBorrarMaterialId = mat.Id">
+                                            Borrar
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ===================================================================== *@
+        @* PESTAÑA 2: MODELOS FABRICABLES                                        *@
+        @* ===================================================================== *@
+        else if (_pestana == PestanaCatalogo.Modelos)
+        {
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div class="d-flex flex-wrap gap-1">
+                    <button type="button"
+                            class="btn btn-sm @(_filtroCategoriaId is null ? "btn-dark" : "btn-outline-secondary")"
+                            @onclick="() => _filtroCategoriaId = null">
+                        Todas
+                    </button>
+                    @foreach (var cat in _paquete.Categories)
+                    {
+                        <button type="button"
+                                class="btn btn-sm @(_filtroCategoriaId == cat.Id ? "btn-dark" : "btn-outline-secondary")"
+                                @onclick="() => _filtroCategoriaId = cat.Id">
+                            @cat.Name
+                        </button>
+                    }
+                </div>
+
+                <button type="button" class="btn btn-success btn-sm" @onclick="AbrirNuevoModelo">
+                    @(_mostrarFormModelo && _editandoModeloId is null ? "Cancelar" : "+ Nuevo Modelo")
+                </button>
+            </div>
+
+            @* Formulario inline de Modelo *@
+            @if (_mostrarFormModelo)
+            {
+                <div class="card border-primary shadow-sm mb-3">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-primary mb-3">
+                            @(_editandoModeloId.HasValue ? "Editar modelo" : "Nuevo modelo")
+                        </h6>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Categoría *</label>
+                                <select class="form-select" @bind="_modCategoryId">
+                                    @foreach (var cat in _paquete.Categories)
+                                    {
+                                        <option value="@cat.Id">@cat.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-5 col-md-3">
+                                <label class="form-label form-label-sm fw-semibold">Código *</label>
+                                <input type="text" class="form-control" @bind="_modCode" maxlength="40" placeholder="Ej: VENT-P65" />
+                            </div>
+                            <div class="col-7 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Nombre *</label>
+                                <input type="text" class="form-control" @bind="_modName" maxlength="120" placeholder="Ej: Ventana Corrediza P-65" />
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Modo mano de obra</label>
+                                <select class="form-select" @bind="_modLaborMode">
+                                    <option value="@LaborMode.Fixed">Fijo por unidad (RD$)</option>
+                                    <option value="@LaborMode.PerSqFt">Por pie² (RD$ / ft²)</option>
+                                    <option value="@LaborMode.Percent">Porcentaje de materiales (%)</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Valor mano de obra</label>
+                                <input type="number" step="0.01" min="0" class="form-control" @bind="_modLaborValue" />
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Margen ganancia (%)</label>
+                                <input type="number" step="0.5" min="0" max="300" class="form-control" @bind="_modMargin" />
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-3 align-items-end">
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Grosor tablero (pulg. 1/16")</label>
+                                <input type="text" class="form-control" @bind="_modThicknessTexto" placeholder="Ej: 3/4 o 0" />
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Orden</label>
+                                <input type="number" min="0" max="999" class="form-control" @bind="_modSortOrder" />
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chkModActivo" @bind="_modActive" />
+                                    <label class="form-check-label fw-semibold" for="chkModActivo">
+                                        Modelo activo
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary"
+                                    @onclick="CerrarFormModelo" disabled="@_guardando">
+                                Cancelar
+                            </button>
+                            <button type="button" class="btn btn-primary"
+                                    @onclick="GuardarModeloAsync" disabled="@_guardando">
+                                @(_guardando ? "Guardando..." : "Guardar modelo")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* Lista de modelos *@
+            <div class="d-flex flex-column gap-2">
+                @foreach (var mod in ModelosFiltrados)
+                {
+                    var catNombre = _paquete.Categories.FirstOrDefault(c => c.Id == mod.CategoryId)?.Name ?? "Categoría";
+
+                    <div class="p-3 rounded shadow-sm bg-white border @(mod.IsActive ? "" : "opacity-75 bg-light")">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div style="min-width: 0;">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="fw-bold text-break">@mod.Name</span>
+                                    <span class="badge bg-light text-dark border">@mod.Code</span>
+                                    <span class="badge bg-primary-subtle text-primary">@catNombre</span>
+                                    @if (!mod.IsActive)
+                                    {
+                                        <span class="badge bg-secondary">Inactivo</span>
+                                    }
+                                </div>
+                                <small class="text-muted d-block mt-1">
+                                    Mano obra: @EtiquetaManoObra(mod) · Margen: @mod.DefaultMarginPercent.ToString("0.##")%
+                                    @if (mod.DefaultBoardThicknessSixteenths > 0)
+                                    {
+                                        <span> · Tablero: @(new MeasureFraction(mod.DefaultBoardThicknessSixteenths))</span>
+                                    }
+                                </small>
+                                <small class="text-muted d-block">
+                                    @mod.CutRules.Count reglas de corte · @mod.HardwareRules.Count reglas de herrajes
+                                </small>
+                            </div>
+
+                            <div class="d-flex gap-1 text-nowrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => EditarModelo(mod)">
+                                    Editar
+                                </button>
+                                @if (_confirmarBorrarModeloId == mod.Id)
+                                {
+                                    <button type="button" class="btn btn-sm btn-danger"
+                                            @onclick="() => BorrarModeloAsync(mod.Id)" disabled="@_guardando">
+                                        Confirmar
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => _confirmarBorrarModeloId = null" disabled="@_guardando">
+                                        No
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            @onclick="() => _confirmarBorrarModeloId = mod.Id">
+                                        Borrar
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private enum PestanaCatalogo { Materiales, Modelos }
+    private PestanaCatalogo _pestana = PestanaCatalogo.Materiales;
+
+    private CatalogoUniversalPaqueteDto? _paquete;
+    private bool _cargando = true;
+    private bool _guardando;
+    private string? _error;
+    private string? _mensajeOk;
+
+    // Filtros
+    private MaterialType? _filtroTipoMaterial;
+    private string _buscarMaterial = "";
+    private Guid? _filtroCategoriaId;
+
+    // Formulario Material
+    private bool _mostrarFormMaterial;
+    private Guid? _editandoMaterialId;
+    private Guid? _confirmarBorrarMaterialId;
+    private string _matCode = "";
+    private string _matName = "";
+    private MaterialType _matType = MaterialType.Linear1D;
+    private decimal _matUnitCost;
+    private decimal _matWaste = 10m;
+    private decimal? _matLengthIn;
+    private decimal? _matWidthIn;
+    private decimal? _matHeightIn;
+    private string _matColors = "";
+    private bool _matActive = true;
+
+    // Formulario Modelo
+    private bool _mostrarFormModelo;
+    private Guid? _editandoModeloId;
+    private Guid? _confirmarBorrarModeloId;
+    private Guid _modCategoryId;
+    private string _modCode = "";
+    private string _modName = "";
+    private LaborMode _modLaborMode = LaborMode.PerSqFt;
+    private decimal _modLaborValue;
+    private decimal _modMargin = 35m;
+    private string _modThicknessTexto = "0";
+    private int _modSortOrder;
+    private bool _modActive = true;
+
+    private IEnumerable<MaterialCatalogDto> MaterialesFiltrados
+    {
+        get
+        {
+            if (_paquete is null) return [];
+            var lista = _paquete.Materials.AsEnumerable();
+
+            if (_filtroTipoMaterial.HasValue)
+                lista = lista.Where(m => m.MaterialType == _filtroTipoMaterial.Value);
+
+            if (!string.IsNullOrWhiteSpace(_buscarMaterial))
+            {
+                var q = _buscarMaterial.Trim();
+                lista = lista.Where(m =>
+                    m.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    m.Code.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return lista;
+        }
+    }
+
+    private IEnumerable<ProductModelDto> ModelosFiltrados =>
+        _paquete is null
+            ? []
+            : _filtroCategoriaId.HasValue
+                ? _paquete.Models.Where(m => m.CategoryId == _filtroCategoriaId.Value)
+                : _paquete.Models;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCatalogoAsync(forzar: false);
+    }
+
+    private async Task CargarCatalogoAsync(bool forzar)
+    {
+        _cargando = true;
+        _error = null;
+
+        _paquete = await ServicioCatalogo.ObtenerPaqueteAsync(
+            incluirInactivos: true,
+            forzarRecarga: forzar);
+
+        if (_paquete is null)
+            _error = ServicioCatalogo.UltimoError ?? "No se pudo cargar el catálogo.";
+
+        _cargando = false;
+    }
+
+    // =========================================================================
+    // CRUD MATERIALES
+    // =========================================================================
+
+    private void AbrirNuevoMaterial()
+    {
+        if (_mostrarFormMaterial && _editandoMaterialId is null)
+        {
+            _mostrarFormMaterial = false;
+            return;
+        }
+
+        _editandoMaterialId = null;
+        _error = null;
+        _mensajeOk = null;
+
+        _matCode = "";
+        _matName = "";
+        _matType = _filtroTipoMaterial ?? MaterialType.Linear1D;
+        _matUnitCost = 0m;
+        _matWaste = 10m;
+        _matLengthIn = _matType == MaterialType.Linear1D ? 252m : null;
+        _matWidthIn = _matType == MaterialType.Sheet2D ? 48m : null;
+        _matHeightIn = _matType == MaterialType.Sheet2D ? 96m : null;
+        _matColors = "";
+        _matActive = true;
+
+        _mostrarFormMaterial = true;
+    }
+
+    private void EditarMaterial(MaterialCatalogDto mat)
+    {
+        _editandoMaterialId = mat.Id;
+        _error = null;
+        _mensajeOk = null;
+
+        _matCode = mat.Code;
+        _matName = mat.Name;
+        _matType = mat.MaterialType;
+        _matUnitCost = mat.UnitCost;
+        _matWaste = mat.DefaultWastePercent;
+        _matLengthIn = mat.CommercialLengthInches;
+        _matWidthIn = mat.CommercialWidthInches;
+        _matHeightIn = mat.CommercialHeightInches;
+        _matColors = mat.ColorOptions ?? "";
+        _matActive = mat.IsActive;
+
+        _mostrarFormMaterial = true;
+    }
+
+    private void CerrarFormMaterial()
+    {
+        _mostrarFormMaterial = false;
+        _editandoMaterialId = null;
+    }
+
+    private async Task GuardarMaterialAsync()
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (string.IsNullOrWhiteSpace(_matCode) || string.IsNullOrWhiteSpace(_matName))
+        {
+            _error = "Código y nombre del material son obligatorios.";
+            return;
+        }
+
+        var dto = new GuardarMaterialCatalogDto(
+            Code: _matCode.Trim(),
+            Name: _matName.Trim(),
+            MaterialType: _matType,
+            CommercialLengthInches: _matType == MaterialType.Linear1D ? _matLengthIn : null,
+            CommercialWidthInches: _matType == MaterialType.Sheet2D ? _matWidthIn : null,
+            CommercialHeightInches: _matType == MaterialType.Sheet2D ? _matHeightIn : null,
+            UnitCost: Math.Max(0m, _matUnitCost),
+            DefaultWastePercent: Math.Max(0m, _matWaste),
+            ColorOptions: string.IsNullOrWhiteSpace(_matColors) ? null : _matColors.Trim(),
+            IsActive: _matActive);
+
+        _guardando = true;
+        string? error;
+
+        if (_editandoMaterialId.HasValue)
+        {
+            (_, error) = await ServicioCatalogo.EditarMaterialAsync(_editandoMaterialId.Value, dto);
+        }
+        else
+        {
+            (_, error) = await ServicioCatalogo.CrearMaterialAsync(dto);
+        }
+
+        _guardando = false;
+
+        if (error is not null)
+        {
+            _error = error;
+            return;
+        }
+
+        CerrarFormMaterial();
+        _mensajeOk = "Material guardado correctamente.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    private async Task BorrarMaterialAsync(Guid id)
+    {
+        _guardando = true;
+        _error = null;
+        _mensajeOk = null;
+
+        var (exito, error) = await ServicioCatalogo.BorrarMaterialAsync(id);
+        _guardando = false;
+        _confirmarBorrarMaterialId = null;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar el material.";
+            return;
+        }
+
+        _mensajeOk = "Material eliminado.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    // =========================================================================
+    // CRUD MODELOS
+    // =========================================================================
+
+    private void AbrirNuevoModelo()
+    {
+        if (_mostrarFormModelo && _editandoModeloId is null)
+        {
+            _mostrarFormModelo = false;
+            return;
+        }
+
+        _editandoModeloId = null;
+        _error = null;
+        _mensajeOk = null;
+
+        _modCategoryId = _filtroCategoriaId ?? _paquete?.Categories.FirstOrDefault()?.Id ?? Guid.Empty;
+        _modCode = "";
+        _modName = "";
+        _modLaborMode = LaborMode.PerSqFt;
+        _modLaborValue = 0m;
+        _modMargin = 35m;
+        _modThicknessTexto = "0";
+        _modSortOrder = (_paquete?.Models.Count ?? 0) + 1;
+        _modActive = true;
+
+        _mostrarFormModelo = true;
+    }
+
+    private void EditarModelo(ProductModelDto mod)
+    {
+        _editandoModeloId = mod.Id;
+        _error = null;
+        _mensajeOk = null;
+
+        _modCategoryId = mod.CategoryId;
+        _modCode = mod.Code;
+        _modName = mod.Name;
+        _modLaborMode = mod.DefaultLaborMode;
+        _modLaborValue = mod.DefaultLaborValue;
+        _modMargin = mod.DefaultMarginPercent;
+        _modThicknessTexto = mod.DefaultBoardThicknessSixteenths > 0
+            ? new MeasureFraction(mod.DefaultBoardThicknessSixteenths).ToString().Replace("\"", "")
+            : "0";
+        _modSortOrder = mod.SortOrder;
+        _modActive = mod.IsActive;
+
+        _mostrarFormModelo = true;
+    }
+
+    private void CerrarFormModelo()
+    {
+        _mostrarFormModelo = false;
+        _editandoModeloId = null;
+    }
+
+    private async Task GuardarModeloAsync()
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (_modCategoryId == Guid.Empty)
+        {
+            _error = "Selecciona una categoría.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_modCode) || string.IsNullOrWhiteSpace(_modName))
+        {
+            _error = "Código y nombre del modelo son obligatorios.";
+            return;
+        }
+
+        int grosorSixteenths = 0;
+        if (!string.IsNullOrWhiteSpace(_modThicknessTexto))
+        {
+            if (!MeasureFraction.TryParse(_modThicknessTexto, out var grosor) || grosor.Sixteenths < 0)
+            {
+                _error = "Grosor de tablero inválido (usa por ejemplo: 3/4, 5/8 o 0).";
+                return;
+            }
+            grosorSixteenths = grosor.Sixteenths;
+        }
+
+        var dto = new GuardarProductModelDto(
+            CategoryId: _modCategoryId,
+            Code: _modCode.Trim(),
+            Name: _modName.Trim(),
+            DefaultBoardThicknessSixteenths: grosorSixteenths,
+            DefaultLaborMode: _modLaborMode,
+            DefaultLaborValue: Math.Max(0m, _modLaborValue),
+            DefaultMarginPercent: Math.Max(0m, _modMargin),
+            SortOrder: _modSortOrder,
+            IsActive: _modActive);
+
+        _guardando = true;
+        string? error;
+
+        if (_editandoModeloId.HasValue)
+        {
+            (_, error) = await ServicioCatalogo.EditarModeloAsync(_editandoModeloId.Value, dto);
+        }
+        else
+        {
+            (_, error) = await ServicioCatalogo.CrearModeloAsync(dto);
+        }
+
+        _guardando = false;
+
+        if (error is not null)
+        {
+            _error = error;
+            return;
+        }
+
+        CerrarFormModelo();
+        _mensajeOk = "Modelo guardado correctamente.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    private async Task BorrarModeloAsync(Guid id)
+    {
+        _guardando = true;
+        _error = null;
+        _mensajeOk = null;
+
+        var (exito, error) = await ServicioCatalogo.BorrarModeloAsync(id);
+        _guardando = false;
+        _confirmarBorrarModeloId = null;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar el modelo.";
+            return;
+        }
+
+        _mensajeOk = "Modelo eliminado.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    // =========================================================================
+    // HELPERS VISUALES
+    // =========================================================================
+
+    private static string EtiquetaTipoMaterial(MaterialType tipo) => tipo switch
+    {
+        MaterialType.Linear1D => "Perfil 1D",
+        MaterialType.Sheet2D => "Plancha 2D",
+        MaterialType.Unit => "Herraje",
+        _ => tipo.ToString()
+    };
+
+    private static string ClaseTipoMaterial(MaterialType tipo) => tipo switch
+    {
+        MaterialType.Linear1D => "bg-info-subtle text-info-emphasis",
+        MaterialType.Sheet2D => "bg-warning-subtle text-warning-emphasis",
+        MaterialType.Unit => "bg-secondary-subtle text-secondary-emphasis",
+        _ => "bg-light text-dark"
+    };
+
+    private static string FormatoComercial(MaterialCatalogDto m) => m.MaterialType switch
+    {
+        MaterialType.Linear1D => m.CommercialLengthInches is > 0
+            ? $"Barra {m.CommercialLengthInches.Value:0.##}\" ({m.CommercialLengthInches.Value / 12m:0.##} pies)"
+            : "Por pie lineal",
+        MaterialType.Sheet2D => m.CommercialWidthInches is > 0 && m.CommercialHeightInches is > 0
+            ? $"Plancha {m.CommercialWidthInches.Value:0.##}\" × {m.CommercialHeightInches.Value:0.##}\""
+            : "Por pie²",
+        _ => "Por unidad"
+    };
+
+    private static string EtiquetaManoObra(ProductModelDto mod) => mod.DefaultLaborMode switch
+    {
+        LaborMode.Fixed => $"RD$ {mod.DefaultLaborValue:N2} / und",
+        LaborMode.PerSqFt => $"RD$ {mod.DefaultLaborValue:N2} / pie²",
+        LaborMode.Percent => $"{mod.DefaultLaborValue:0.##}% materiales",
+        _ => "-"
+    };
+}

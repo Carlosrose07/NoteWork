@@ -1,0 +1,430 @@
+﻿@page "/ordenes"
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Shared.Clientes
+@using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Entidades.Universal
+@using NoteWork.Client.Servicios
+
+@attribute [Authorize]
+
+@inject ServicioOrdenes ServicioOrdenes
+@inject ServicioClientes ServicioClientes
+@inject NavigationManager Navegador
+
+<PageTitle>Órdenes y Presupuestos - NoteWork</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h2 class="mb-0 text-primary fw-bold">Órdenes</h2>
+            <small class="text-muted">Presupuestos, desgloses de corte y producción</small>
+        </div>
+        <button type="button" class="btn btn-primary" @onclick="AlternarFormularioNuevaAsync">
+            @(_mostrarNueva ? "Cancelar" : "+ Nueva Orden")
+        </button>
+    </div>
+    <hr />
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center" role="alert">
+            <span>@_error</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    @* Formulario inline para crear una orden rápida (sin modal pesado) *@
+    @if (_mostrarNueva)
+    {
+        <div class="card border-primary-subtle shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title text-primary fw-bold mb-3">Nueva Orden / Presupuesto</h5>
+
+                @if (_clientes.Count > 0)
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Cliente registrado (opcional)</label>
+                        <select class="form-select" @onchange="AlSeleccionarCliente">
+                            <option value="">-- Cliente nuevo / escribir manual --</option>
+                            @foreach (var c in _clientes)
+                            {
+                                <option value="@c.Id" selected="@(_nuevaCustomerId == c.Id)">
+                                    @c.Nombre @(string.IsNullOrWhiteSpace(c.Telefono) ? "" : $"({c.Telefono})")
+                                </option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-semibold">Nombre del cliente *</label>
+                        <input type="text" class="form-control" placeholder="Ej: Juan Pérez"
+                               @bind="_nuevoNombreCliente" maxlength="150" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-semibold">Teléfono</label>
+                        <input type="tel" class="form-control" placeholder="Ej: 809-555-0000"
+                               @bind="_nuevoTelefono" maxlength="40" />
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-semibold">Dirección / Obra</label>
+                        <input type="text" class="form-control" placeholder="Ej: Urb. Las Palmas, Casa #12"
+                               @bind="_nuevaDireccion" maxlength="250" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label fw-semibold">ITBIS (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" class="form-control"
+                               @bind="_nuevoItbis" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label fw-semibold">Descuento (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" class="form-control"
+                               @bind="_nuevoDescuento" />
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 justify-content-end">
+                    <button type="button" class="btn btn-outline-secondary"
+                            @onclick="() => _mostrarNueva = false" disabled="@_guardandoNueva">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary"
+                            @onclick="CrearOrdenAsync" disabled="@_guardandoNueva">
+                        @(_guardandoNueva ? "Creando..." : "Crear y agregar ítems")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Barra de búsqueda *@
+    <div class="input-group mb-2 shadow-sm">
+        <input type="text" class="form-control" placeholder="Buscar por # orden o cliente..."
+               @bind="_terminoBusqueda" @bind:event="oninput" @onkeyup="ManejarEnterAsync" />
+
+        @if (!string.IsNullOrWhiteSpace(_terminoBusqueda))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="LimpiarBusquedaAsync">
+                Limpiar
+            </button>
+        }
+
+        <button class="btn btn-outline-primary" type="button" @onclick="BuscarAsync">
+            Buscar
+        </button>
+    </div>
+
+    @* Filtros táctiles rápidos por estado *@
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <button type="button"
+                class="btn btn-sm @(_filtroEstado is null ? "btn-primary" : "btn-outline-secondary")"
+                @onclick="() => FiltrarPorEstadoAsync(null)">
+            Todas
+        </button>
+        <button type="button"
+                class="btn btn-sm @(_filtroEstado == WorkOrderStatus.Draft ? "btn-secondary" : "btn-outline-secondary")"
+                @onclick="() => FiltrarPorEstadoAsync(WorkOrderStatus.Draft)">
+            Borrador
+        </button>
+        <button type="button"
+                class="btn btn-sm @(_filtroEstado == WorkOrderStatus.Quoted ? "btn-info text-dark" : "btn-outline-secondary")"
+                @onclick="() => FiltrarPorEstadoAsync(WorkOrderStatus.Quoted)">
+            Cotizado
+        </button>
+        <button type="button"
+                class="btn btn-sm @(_filtroEstado == WorkOrderStatus.InProduction ? "btn-warning text-dark" : "btn-outline-secondary")"
+                @onclick="() => FiltrarPorEstadoAsync(WorkOrderStatus.InProduction)">
+            En Producción
+        </button>
+        <button type="button"
+                class="btn btn-sm @(_filtroEstado == WorkOrderStatus.Completed ? "btn-success" : "btn-outline-secondary")"
+                @onclick="() => FiltrarPorEstadoAsync(WorkOrderStatus.Completed)">
+            Completado
+        </button>
+    </div>
+
+    @* Listado paginado ligero *@
+    @if (_cargando && _ordenes.Count == 0)
+    {
+        <div class="text-center my-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Cargando órdenes...</p>
+        </div>
+    }
+    else if (_ordenes.Count == 0)
+    {
+        <div class="alert alert-light border text-center py-4">
+            <p class="mb-2 fw-semibold">No hay órdenes para mostrar.</p>
+            <small class="text-muted">Crea una nueva orden rápida para empezar a cotizar y generar cortes.</small>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-column gap-2 mb-3">
+            @foreach (var orden in _ordenes)
+            {
+                <div class="p-3 rounded shadow-sm bg-white border">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <a href="/ordenes/@orden.Id" class="text-decoration-none text-dark flex-grow-1" style="min-width: 0;">
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                <span class="fw-bold text-primary">@orden.OrderNumber</span>
+                                <span class="badge @ClaseBadgeEstado(orden.Status)">
+                                    @EtiquetaEstado(orden.Status)
+                                </span>
+                            </div>
+                            <div class="fw-semibold fs-6 text-break">@orden.CustomerName</div>
+                            <small class="text-muted">
+                                @orden.ItemCount @(orden.ItemCount == 1 ? "ítem" : "ítems") · @orden.FechaCreacion.ToLocalTime().ToString("dd/MM/yyyy")
+                            </small>
+                        </a>
+
+                        <div class="text-end text-nowrap">
+                            <div class="fw-bold fs-6 text-dark">
+                                RD$ @orden.TotalQuoteAmount.ToString("N2")
+                            </div>
+                            <div class="d-flex gap-1 justify-content-end mt-2">
+                                <a href="/ordenes/@orden.Id" class="btn btn-sm btn-outline-primary">
+                                    Abrir
+                                </a>
+                                @if (_confirmarBorrarId == orden.Id)
+                                {
+                                    <button type="button" class="btn btn-sm btn-danger"
+                                            @onclick="() => BorrarOrdenAsync(orden.Id)"
+                                            disabled="@_borrando">
+                                        Confirmar
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => _confirmarBorrarId = null"
+                                            disabled="@_borrando">
+                                        No
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            @onclick="() => _confirmarBorrarId = orden.Id">
+                                        Borrar
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_hayMas)
+        {
+            <div class="text-center mb-4">
+                <button type="button" class="btn btn-outline-primary"
+                        @onclick="CargarMasAsync" disabled="@_cargando">
+                    @(_cargando ? "Cargando..." : $"Cargar más ({_ordenes.Count} de {_totalRegistros})")
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const int TamanoPagina = 20;
+
+    private readonly List<WorkOrderResumenDto> _ordenes = [];
+    private readonly List<ClienteResumen> _clientes = [];
+    private bool _clientesCargados;
+
+    private bool _cargando = true;
+    private int _paginaActual = 1;
+    private int _totalRegistros;
+    private bool _hayMas;
+    private string _terminoBusqueda = "";
+    private WorkOrderStatus? _filtroEstado;
+    private string? _error;
+
+    // Estado del formulario inline de nueva orden
+    private bool _mostrarNueva;
+    private bool _guardandoNueva;
+    private Guid? _nuevaCustomerId;
+    private string _nuevoNombreCliente = "";
+    private string _nuevoTelefono = "";
+    private string _nuevaDireccion = "";
+    private decimal _nuevoItbis = 0m;
+    private decimal _nuevoDescuento = 0m;
+
+    // Confirmación inline de borrado
+    private Guid? _confirmarBorrarId;
+    private bool _borrando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarOrdenesAsync(reiniciar: true);
+    }
+
+    private async Task CargarOrdenesAsync(bool reiniciar)
+    {
+        _cargando = true;
+        _error = null;
+
+        if (reiniciar)
+        {
+            _paginaActual = 1;
+            _ordenes.Clear();
+        }
+
+        var pagina = await ServicioOrdenes.ObtenerPaginaAsync(
+            pagina: _paginaActual,
+            tamanoPagina: TamanoPagina,
+            buscar: _terminoBusqueda,
+            estado: _filtroEstado);
+
+        if (ServicioOrdenes.UltimoError is not null)
+        {
+            _error = ServicioOrdenes.UltimoError;
+        }
+        else
+        {
+            _ordenes.AddRange(pagina.Items);
+            _totalRegistros = pagina.TotalRegistros;
+            _hayMas = _ordenes.Count < _totalRegistros;
+        }
+
+        _cargando = false;
+    }
+
+    private async Task AlternarFormularioNuevaAsync()
+    {
+        _mostrarNueva = !_mostrarNueva;
+        _error = null;
+
+        if (_mostrarNueva && !_clientesCargados)
+        {
+            var paginaClientes = await ServicioClientes.ObtenerClientesAsync(1, 50);
+            _clientes.Clear();
+            _clientes.AddRange(paginaClientes.Items);
+            _clientesCargados = true;
+        }
+    }
+
+    private void AlSeleccionarCliente(ChangeEventArgs e)
+    {
+        var texto = e.Value?.ToString();
+        if (Guid.TryParse(texto, out var clienteId))
+        {
+            var cliente = _clientes.FirstOrDefault(c => c.Id == clienteId);
+            if (cliente is not null)
+            {
+                _nuevaCustomerId = cliente.Id;
+                _nuevoNombreCliente = cliente.Nombre;
+                _nuevoTelefono = cliente.Telefono ?? "";
+                return;
+            }
+        }
+
+        _nuevaCustomerId = null;
+    }
+
+    private async Task CrearOrdenAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_nuevoNombreCliente))
+        {
+            _error = "Escribe el nombre del cliente para crear la orden.";
+            return;
+        }
+
+        _guardandoNueva = true;
+
+        var dto = new CrearActualizarWorkOrderDto(
+            OrderType: WorkOrderType.QuickOrder,
+            CustomerId: _nuevaCustomerId,
+            ProjectId: null,
+            CustomerName: _nuevoNombreCliente.Trim(),
+            CustomerPhone: string.IsNullOrWhiteSpace(_nuevoTelefono) ? null : _nuevoTelefono.Trim(),
+            CustomerAddress: string.IsNullOrWhiteSpace(_nuevaDireccion) ? null : _nuevaDireccion.Trim(),
+            Status: WorkOrderStatus.Draft,
+            TaxRatePercent: Math.Max(0, _nuevoItbis),
+            DiscountPercent: Math.Clamp(_nuevoDescuento, 0, 100),
+            SubtotalMaterials: 0m,
+            SubtotalLabor: 0m,
+            TotalQuoteAmount: 0m,
+            Notes: null,
+            PricingSnapshotJson: null);
+
+        var (creada, error) = await ServicioOrdenes.CrearAsync(dto);
+        _guardandoNueva = false;
+
+        if (error is not null || creada is null)
+        {
+            _error = error ?? "No se pudo crear la orden.";
+            return;
+        }
+
+        Navegador.NavigateTo($"/ordenes/{creada.Id}");
+    }
+
+    private async Task BorrarOrdenAsync(Guid id)
+    {
+        _borrando = true;
+        _error = null;
+
+        var (exito, error) = await ServicioOrdenes.BorrarAsync(id);
+        _borrando = false;
+        _confirmarBorrarId = null;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar la orden.";
+            return;
+        }
+
+        _ordenes.RemoveAll(o => o.Id == id);
+        _totalRegistros = Math.Max(0, _totalRegistros - 1);
+        _hayMas = _ordenes.Count < _totalRegistros;
+    }
+
+    private Task BuscarAsync() => CargarOrdenesAsync(reiniciar: true);
+
+    private async Task LimpiarBusquedaAsync()
+    {
+        _terminoBusqueda = "";
+        await CargarOrdenesAsync(reiniciar: true);
+    }
+
+    private Task ManejarEnterAsync(KeyboardEventArgs e) =>
+        e.Key == "Enter" ? BuscarAsync() : Task.CompletedTask;
+
+    private async Task FiltrarPorEstadoAsync(WorkOrderStatus? estado)
+    {
+        _filtroEstado = estado;
+        await CargarOrdenesAsync(reiniciar: true);
+    }
+
+    private async Task CargarMasAsync()
+    {
+        _paginaActual++;
+        await CargarOrdenesAsync(reiniciar: false);
+    }
+
+    private static string EtiquetaEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "Borrador",
+        WorkOrderStatus.Quoted => "Cotizado",
+        WorkOrderStatus.InProduction => "En Producción",
+        WorkOrderStatus.Completed => "Completado",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseBadgeEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "bg-secondary",
+        WorkOrderStatus.Quoted => "bg-info text-dark",
+        WorkOrderStatus.InProduction => "bg-warning text-dark",
+        WorkOrderStatus.Completed => "bg-success",
+        _ => "bg-light text-dark"
+    };
+}

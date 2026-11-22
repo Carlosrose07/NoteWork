@@ -131,8 +131,19 @@ code {
     text-align: start;
 }
 
-/* Al imprimir: oculta menú lateral y barra superior, deja solo la cotización */
+/* Impresión limpia: oculta URL/fecha del navegador (@page margin 0) y aplica margen interno */
 @media print {
+    @page {
+        margin: 0;
+    }
+
+    body {
+        background: #fff !important;
+        padding: 12mm !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
     .sidebar,
     .top-row,
     nav,
@@ -148,7 +159,42 @@ code {
         margin: 0 !important;
     }
 
-    article {
+    article,
+    .content {
         padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .container {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .table-responsive {
+        overflow: visible !important;
+    }
+
+    .table {
+        font-size: 12px;
+    }
+
+    .shadow-sm {
+        box-shadow: none !important;
+    }
+
+    .nw-print-doc {
+        border: none !important;
+    }
+
+        .nw-print-doc > .card-body {
+            padding: 0 !important;
+        }
+
+    .nw-print-card,
+    .nw-print-signatures {
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
 }

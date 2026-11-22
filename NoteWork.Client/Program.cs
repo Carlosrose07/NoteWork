@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using NoteWork.Client;
-using NoteWork.Client.Servicios;     // aquí vive ServicioSesion (4.15.8)
+using NoteWork.Client.Servicios;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
 
@@ -19,9 +19,6 @@ var urlApi = builder.Configuration["ApiUrl"]
 
 // El HttpClient apunta a la Api y pasa por ManejadorToken (4.17): cada petición
 // sale con el token si hay sesión vigente.
-// CAMBIO (Bloque B): al manejador se le pasa también "sp" para que pueda pedir
-// ServicioSesion y NavigationManager más tarde, solo cuando llegue un 401
-// (así no se forma un círculo con el HttpClient al arrancar).
 // Sigue siendo UN solo HttpClient compartido (AddScoped), liviano para celulares.
 builder.Services.AddScoped(sp =>
 {
@@ -44,6 +41,8 @@ builder.Services.AddScoped<ServicioClientes>();
 builder.Services.AddScoped<ServicioProyectos>();
 builder.Services.AddScoped<ServicioNodos>();
 builder.Services.AddScoped<ServicioPartidas>();
+builder.Services.AddScoped<ServicioCatalogoUniversal>();
+builder.Services.AddScoped<ServicioOrdenes>();
 
 // --- AUTENTICACIÓN DE PÁGINAS (4.16) ---
 // AddAuthorizationCore activa [Authorize] en su versión liviana para WASM.

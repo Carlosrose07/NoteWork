@@ -1,0 +1,1348 @@
+﻿@page "/ordenes/{Id:guid}"
+@using System.Globalization
+@using Microsoft.AspNetCore.Authorization
+@using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Entidades.Universal
+@using NoteWork.Shared.Motor
+@using NoteWork.Client.Servicios
+
+@attribute [Authorize]
+
+@inject ServicioOrdenes ServicioOrdenes
+@inject ServicioCatalogoUniversal ServicioCatalogo
+@inject IJSRuntime JS
+
+<PageTitle>@(_orden is null ? "Orden - NoteWork" : $"{_orden.OrderNumber} - NoteWork")</PageTitle>
+
+<div class="container mt-3 mb-5">
+    @* Barra superior (oculta al imprimir) *@
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 d-print-none">
+        <a href="/ordenes" class="btn btn-outline-secondary btn-sm">
+            &larr; Volver a Órdenes
+        </a>
+
+        @if (_orden is not null)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <select class="form-select form-select-sm w-auto"
+                        value="@_orden.Status"
+                        @onchange="AlCambiarEstadoAsync"
+                        disabled="@_guardandoCabecera">
+                    <option value="@WorkOrderStatus.Draft">Borrador</option>
+                    <option value="@WorkOrderStatus.Quoted">Cotizado</option>
+                    <option value="@WorkOrderStatus.InProduction">En Producción</option>
+                    <option value="@WorkOrderStatus.Completed">Completado</option>
+                </select>
+
+                <button type="button" class="btn btn-sm btn-outline-dark" @onclick="ImprimirAsync">
+                    Imprimir / PDF
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center d-print-none" role="alert">
+            <span>@_error</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_mensajeOk))
+    {
+        <div class="alert alert-success py-2 d-flex justify-content-between align-items-center d-print-none" role="alert">
+            <span>@_mensajeOk</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _mensajeOk = null"></button>
+        </div>
+    }
+
+    @if (_cargando)
+    {
+        <div class="text-center my-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Cargando orden y catálogo...</p>
+        </div>
+    }
+    else if (_orden is null)
+    {
+        <div class="alert alert-warning">
+            No se encontró la orden solicitada o no tienes permiso para verla.
+        </div>
+    }
+    else
+    {
+        @* Resumen de cabecera (se oculta al imprimir el Presupuesto para no duplicar el encabezado A4) *@
+        <div class="card shadow-sm mb-3 @(_pestana == PestanaVista.Presupuesto ? "d-print-none" : "")">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                    <div>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <h3 class="mb-0 fw-bold text-primary">@_orden.OrderNumber</h3>
+                            <span class="badge @ClaseBadgeEstado(_orden.Status)">@EtiquetaEstado(_orden.Status)</span>
+                        </div>
+                        <div class="fw-semibold fs-5 mt-1">@_orden.CustomerName</div>
+                        @if (!string.IsNullOrWhiteSpace(_orden.CustomerPhone) || !string.IsNullOrWhiteSpace(_orden.CustomerAddress))
+                        {
+                            <small class="text-muted d-block">
+                                @if (!string.IsNullOrWhiteSpace(_orden.CustomerPhone))
+                                {
+                                    <span>Tel: @_orden.CustomerPhone</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_orden.CustomerPhone) && !string.IsNullOrWhiteSpace(_orden.CustomerAddress))
+                                {
+                                    <span> · </span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_orden.CustomerAddress))
+                                {
+                                    <span>@_orden.CustomerAddress</span>
+                                }
+                            </small>
+                        }
+                    </div>
+
+                    <div class="text-end">
+                        <small class="text-muted d-block">Total Presupuesto</small>
+                        <div class="fs-4 fw-bold text-success">
+                            RD$ @((_calculo?.TotalQuoteAmount ?? _orden.TotalQuoteAmount).ToString("N2"))
+                        </div>
+                        <button type="button"
+                                class="btn btn-link btn-sm p-0 text-decoration-none d-print-none"
+                                @onclick="() => _editandoCabecera = !_editandoCabecera">
+                            @(_editandoCabecera ? "Ocultar datos" : "Editar cliente / ITBIS / notas")
+                        </button>
+                    </div>
+                </div>
+
+                @* Edición inline de cabecera *@
+                @if (_editandoCabecera)
+                {
+                    <hr class="d-print-none" />
+                    <div class="row g-2 d-print-none">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label form-label-sm fw-semibold">Cliente *</label>
+                            <input type="text" class="form-control form-control-sm" @bind="_cabCliente" maxlength="150" />
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label form-label-sm fw-semibold">Teléfono</label>
+                            <input type="tel" class="form-control form-control-sm" @bind="_cabTelefono" maxlength="40" />
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label form-label-sm fw-semibold">Dirección / Obra</label>
+                            <input type="text" class="form-control form-control-sm" @bind="_cabDireccion" maxlength="250" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">Descuento (%)</label>
+                            <input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" @bind="_cabDescuento" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label form-label-sm fw-semibold">ITBIS (%)</label>
+                            <input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" @bind="_cabItbis" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label form-label-sm fw-semibold">Notas / Condiciones (visible en presupuesto)</label>
+                            <input type="text" class="form-control form-control-sm" @bind="_cabNotas" maxlength="500"
+                                   placeholder="Ej: 50% inicial, entrega en 10 días laborables" />
+                        </div>
+                        <div class="col-12 d-flex justify-content-end gap-2 mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    @onclick="CancelarEdicionCabecera" disabled="@_guardandoCabecera">
+                                Cancelar
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary"
+                                    @onclick="GuardarCabeceraAsync" disabled="@_guardandoCabecera">
+                                @(_guardandoCabecera ? "Guardando..." : "Guardar cambios")
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Pestañas táctiles (ocultas al imprimir) *@
+        <div class="d-flex flex-wrap gap-2 mb-3 d-print-none">
+            <button type="button"
+                    class="btn @(_pestana == PestanaVista.Items ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaVista.Items">
+                Ítems (@_items.Count)
+            </button>
+            <button type="button"
+                    class="btn @(_pestana == PestanaVista.Cortes ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaVista.Cortes">
+                Hoja de Cortes
+            </button>
+            <button type="button"
+                    class="btn @(_pestana == PestanaVista.Compras ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaVista.Compras">
+                Compras
+            </button>
+            <button type="button"
+                    class="btn @(_pestana == PestanaVista.Presupuesto ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => _pestana = PestanaVista.Presupuesto">
+                Presupuesto
+            </button>
+        </div>
+
+        @* ===================================================================== *@
+        @* PESTAÑA 1: ÍTEMS + FORMULARIO INLINE EN 1/16"                         *@
+        @* ===================================================================== *@
+        @if (_pestana == PestanaVista.Items)
+        {
+            <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
+                <h5 class="mb-0 fw-bold">Productos de la orden</h5>
+                <button type="button" class="btn btn-success btn-sm" @onclick="AbrirNuevoItem">
+                    @(_mostrarFormItem && _editandoItemId is null ? "Cerrar formulario" : "+ Agregar Ítem")
+                </button>
+            </div>
+
+            @if (_mostrarFormItem && _catalogo is not null)
+            {
+                var catSeleccionada = CategoriaSeleccionada;
+                var preview = CalcularPreviewItem();
+
+                <div class="card border-success shadow-sm mb-3 d-print-none">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-success mb-3">
+                            @(_editandoItemId.HasValue ? "Editar ítem" : "Nuevo ítem configurable")
+                        </h6>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-12 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Categoría</label>
+                                <select class="form-select" value="@_formCategoriaId" @onchange="AlCambiarCategoria">
+                                    @foreach (var cat in _catalogo.Categories)
+                                    {
+                                        <option value="@cat.Id">@cat.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Modelo *</label>
+                                <select class="form-select" value="@_formModeloId" @onchange="AlCambiarModelo">
+                                    @foreach (var mod in ModelosDeCategoriaSeleccionada)
+                                    {
+                                        <option value="@mod.Id">@mod.Name (@mod.Code)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <label class="form-label form-label-sm fw-semibold">Cantidad *</label>
+                                <input type="number" min="1" max="500" class="form-control"
+                                       @bind="_formCantidad" @bind:event="oninput" />
+                            </div>
+                        </div>
+
+                        @* Medidas en fracciones 1/16" *@
+                        <div class="row g-2 mb-2">
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Ancho (pulg. 1/16") *</label>
+                                <input type="text" inputmode="decimal" class="form-control"
+                                       placeholder="Ej: 48 1/2"
+                                       @bind="_formAnchoTexto" @bind:event="oninput" />
+                                @if (MeasureFraction.TryParse(_formAnchoTexto, out var anchoOk) && anchoOk.Sixteenths > 0)
+                                {
+                                    <small class="text-success">@anchoOk.ToString()</small>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_formAnchoTexto))
+                                {
+                                    <small class="text-danger">Formato inválido (ej: 48 1/2 o 48.5)</small>
+                                }
+                            </div>
+
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Alto (pulg. 1/16") *</label>
+                                <input type="text" inputmode="decimal" class="form-control"
+                                       placeholder="Ej: 36 3/4"
+                                       @bind="_formAltoTexto" @bind:event="oninput" />
+                                @if (MeasureFraction.TryParse(_formAltoTexto, out var altoOk) && altoOk.Sixteenths > 0)
+                                {
+                                    <small class="text-success">@altoOk.ToString()</small>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_formAltoTexto))
+                                {
+                                    <small class="text-danger">Formato inválido (ej: 36 3/4 o 36)</small>
+                                }
+                            </div>
+
+                            @if (catSeleccionada?.UsesDepth == true)
+                            {
+                                <div class="col-6 col-md-4">
+                                    <label class="form-label form-label-sm fw-semibold">Profundidad (pulg. 1/16") *</label>
+                                    <input type="text" inputmode="decimal" class="form-control"
+                                           placeholder="Ej: 24"
+                                           @bind="_formProfundidadTexto" @bind:event="oninput" />
+                                    @if (MeasureFraction.TryParse(_formProfundidadTexto, out var profOk) && profOk.Sixteenths > 0)
+                                    {
+                                        <small class="text-success">@profOk.ToString()</small>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(_formProfundidadTexto))
+                                    {
+                                        <small class="text-danger">Formato inválido</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        @* Campos dinámicos según las banderas de ProductCategory *@
+                        <div class="row g-2 mb-2">
+                            @if (catSeleccionada?.UsesLeaves == true)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Hojas</label>
+                                    <input type="number" min="1" max="12" class="form-control"
+                                           @bind="_formHojas" @bind:event="oninput" />
+                                </div>
+                            }
+                            @if (catSeleccionada?.UsesDoors == true)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Puertas</label>
+                                    <input type="number" min="0" max="12" class="form-control"
+                                           @bind="_formPuertas" @bind:event="oninput" />
+                                </div>
+                            }
+                            @if (catSeleccionada?.UsesDrawers == true)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Gavetas</label>
+                                    <input type="number" min="0" max="20" class="form-control"
+                                           @bind="_formGavetas" @bind:event="oninput" />
+                                </div>
+                            }
+                            @if (catSeleccionada?.UsesShelves == true)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label form-label-sm fw-semibold">Repisas</label>
+                                    <input type="number" min="0" max="20" class="form-control"
+                                           @bind="_formRepisas" @bind:event="oninput" />
+                                </div>
+                            }
+                            @if (catSeleccionada?.UsesLowTrack == true)
+                            {
+                                <div class="col-12 col-md-3 d-flex align-items-end">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="chkLowTrack"
+                                               @bind="_formRielBajo" />
+                                        <label class="form-check-label fw-semibold" for="chkLowTrack">
+                                            Riel bajo
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Color / Acabado</label>
+                                <input type="text" class="form-control" placeholder="Ej: Blanco, Bronce, Roble"
+                                       @bind="_formColor" maxlength="80" />
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label form-label-sm fw-semibold">Margen % (opcional)</label>
+                                <input type="number" step="0.5" min="0" max="300" class="form-control"
+                                       placeholder="@(ModeloSeleccionado?.DefaultMarginPercent.ToString("0.##") ?? "Default")"
+                                       @bind="_formMargenCustom" @bind:event="oninput" />
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Nota / Ubicación</label>
+                                <input type="text" class="form-control" placeholder="Ej: Habitación principal"
+                                       @bind="_formNotas" maxlength="250" />
+                            </div>
+                        </div>
+
+                        @* Vista previa de cálculo en tiempo real *@
+                        @if (preview is not null)
+                        {
+                            <div class="p-2 rounded bg-light border mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="small">
+                                    <span class="text-muted">Materiales:</span> <strong>RD$ @preview.MaterialCost.ToString("N2")</strong>
+                                    <span class="text-muted ms-2">Mano obra:</span> <strong>RD$ @preview.LaborCost.ToString("N2")</strong>
+                                    <span class="text-muted ms-2">Margen:</span> <strong>@preview.MarginPercent.ToString("0.##")%</strong>
+                                </div>
+                                <div class="text-end">
+                                    <span class="small text-muted me-2">Unit: RD$ @preview.UnitPrice.ToString("N2")</span>
+                                    <span class="fw-bold text-success">Total: RD$ @preview.LineTotal.ToString("N2")</span>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary"
+                                    @onclick="CerrarFormItem" disabled="@_guardandoItem">
+                                Cancelar
+                            </button>
+                            <button type="button" class="btn btn-success"
+                                    @onclick="GuardarItemAsync" disabled="@_guardandoItem">
+                                @(_guardandoItem ? "Guardando..." : (_editandoItemId.HasValue ? "Actualizar ítem" : "Guardar ítem"))
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_items.Count == 0)
+            {
+                <div class="alert alert-light border text-center py-4">
+                    <p class="mb-2 fw-semibold">Esta orden todavía no tiene ítems.</p>
+                    <small class="text-muted">Pulsa "+ Agregar Ítem" para cotizar ventanas, puertas, gabinetes o closets.</small>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex flex-column gap-2">
+                    @foreach (var item in _items)
+                    {
+                        var modelo = ObtenerModelo(item.ProductModelId);
+                        var precio = _calculo?.ItemPrices.FirstOrDefault(p => p.ItemId == item.Id);
+                        var unitPrice = precio?.UnitPrice ?? item.CalculatedUnitPrice;
+                        var lineTotal = precio?.LineTotal ?? item.CalculatedLineTotal;
+
+                        <div class="p-3 rounded shadow-sm bg-white border">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div style="min-width: 0;">
+                                    <div class="fw-bold">
+                                        #@item.LineOrder · @(modelo?.Name ?? "Modelo")
+                                        <span class="badge bg-secondary-subtle text-dark ms-1">x@(item.Quantity)</span>
+                                    </div>
+                                    <div class="small text-dark mt-1">
+                                        <strong>Ancho:</strong> @(new MeasureFraction(item.WidthSixteenths))
+                                        · <strong>Alto:</strong> @(new MeasureFraction(item.HeightSixteenths))
+                                        @if (item.DepthSixteenths.HasValue && item.DepthSixteenths.Value > 0)
+                                        {
+                                            <span> · <strong>Prof:</strong> @(new MeasureFraction(item.DepthSixteenths.Value))</span>
+                                        }
+                                    </div>
+                                    <div class="small text-muted">
+                                        @ResumenConfiguracionItem(item)
+                                        @if (!string.IsNullOrWhiteSpace(item.MaterialColor))
+                                        {
+                                            <span> · Color: @item.MaterialColor</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(item.Notes))
+                                    {
+                                        <div class="small text-muted fst-italic">@item.Notes</div>
+                                    }
+                                </div>
+
+                                <div class="text-end text-nowrap">
+                                    <div class="fw-bold text-success">RD$ @lineTotal.ToString("N2")</div>
+                                    <small class="text-muted d-block">RD$ @unitPrice.ToString("N2") c/u</small>
+
+                                    <div class="d-flex gap-1 justify-content-end mt-2 d-print-none">
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                @onclick="() => EditarItem(item)">
+                                            Editar
+                                        </button>
+                                        @if (_confirmarBorrarItemId == item.Id)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-danger"
+                                                    @onclick="() => BorrarItemAsync(item.Id)"
+                                                    disabled="@_borrandoItem">
+                                                Confirmar
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => _confirmarBorrarItemId = null"
+                                                    disabled="@_borrandoItem">
+                                                No
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => _confirmarBorrarItemId = item.Id">
+                                                Borrar
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        @* ===================================================================== *@
+        @* PESTAÑA 2: HOJA DE CORTES / TALLER (1/16")                            *@
+        @* ===================================================================== *@
+        else if (_pestana == PestanaVista.Cortes)
+        {
+            <h5 class="fw-bold mb-3">Hoja de Cortes / Taller — @_orden.OrderNumber</h5>
+
+            @if (_calculo is null || _calculo.ItemBreakdowns.Count == 0)
+            {
+                <div class="alert alert-light border text-center py-4">
+                    Agrega al menos un ítem para generar la hoja de cortes.
+                </div>
+            }
+            else
+            {
+                @foreach (var bd in _calculo.ItemBreakdowns)
+                {
+                    <div class="card shadow-sm mb-3 nw-print-card">
+                        <div class="card-header bg-light fw-bold d-flex flex-wrap justify-content-between gap-2">
+                            <span>
+                                #@bd.Input.LineOrder · @bd.Model.Name (x@(bd.Input.Quantity))
+                            </span>
+                            <span class="text-primary">
+                                @bd.Input.Width × @bd.Input.Height@(bd.Input.Depth.HasValue ? $" × {bd.Input.Depth.Value}" : "")
+                            </span>
+                        </div>
+                        <div class="card-body p-2">
+                            @if (bd.CutPieces.Count == 0)
+                            {
+                                <small class="text-muted">Sin reglas de corte aplicables.</small>
+                            }
+                            else
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped mb-2">
+                                        <thead>
+                                            <tr>
+                                                <th>Pieza</th>
+                                                <th>Material</th>
+                                                <th class="text-center">Cant.</th>
+                                                <th class="text-end">Medida (1/16")</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var p in bd.CutPieces)
+                                            {
+                                                <tr>
+                                                    <td class="fw-semibold">@p.PartName</td>
+                                                    <td class="small text-muted">@p.MaterialName</td>
+                                                    <td class="text-center fw-bold">@p.Quantity</td>
+                                                    <td class="text-end fw-bold text-nowrap">
+                                                        @if (p.MeasureMode == MeasureMode.Length1D)
+                                                        {
+                                                            @p.Dim1.ToString()
+                                                        }
+                                                        else if (p.MeasureMode == MeasureMode.Rect2D)
+                                                        {
+                                                            @($"{p.Dim1} × {p.Dim2}")
+                                                        }
+                                                        else
+                                                        {
+                                                            @($"Perím. {p.Dim1} × {p.Dim2}")
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+                            @if (bd.HardwareItems.Count > 0)
+                            {
+                                <div class="small px-2 pt-1 border-top">
+                                    <strong class="text-muted">Herrajes:</strong>
+                                    @string.Join(" · ", bd.HardwareItems.Select(h => $"{h.MaterialName}: {h.Quantity:0.##}"))
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+
+        @* ===================================================================== *@
+        @* PESTAÑA 3: CONSOLIDADO DE COMPRAS                                     *@
+        @* ===================================================================== *@
+        else if (_pestana == PestanaVista.Compras)
+        {
+            <h5 class="fw-bold mb-3">Consolidado de Compras — @_orden.OrderNumber</h5>
+
+            @if (_calculo is null || _calculo.ConsolidatedMaterials.Count == 0)
+            {
+                <div class="alert alert-light border text-center py-4">
+                    Agrega ítems para calcular las barras, planchas y herrajes a comprar.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive bg-white rounded shadow-sm border">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">Neto</th>
+                                <th class="text-end">Desp.</th>
+                                <th class="text-end">Comprar</th>
+                                <th class="text-end">Costo Est.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in _calculo.ConsolidatedMaterials)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">@m.MaterialName</div>
+                                        <small class="text-muted">@m.MaterialCode</small>
+                                    </td>
+                                    <td class="text-end text-nowrap">@m.RawQuantity.ToString("0.##")</td>
+                                    <td class="text-end text-nowrap">@m.WastePercent.ToString("0.#")%</td>
+                                    <td class="text-end text-nowrap">
+                                        <span class="fw-bold">@m.CommercialUnitsWhole @EtiquetaUnidad(m.CommercialUnitsWhole, m.CommercialUnitLabel)</span>
+                                        <small class="text-muted d-block">(@m.CommercialUnitsExact.ToString("0.##") exacto)</small>
+                                    </td>
+                                    <td class="text-end text-nowrap fw-semibold">
+                                        RD$ @m.TotalCost.ToString("N2")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="4" class="text-end">Costo estimado materiales</th>
+                                <th class="text-end text-primary">RD$ @_calculo.SubtotalMaterials.ToString("N2")</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        }
+
+        @* ===================================================================== *@
+        @* PESTAÑA 4: PRESUPUESTO / COTIZACIÓN FORMAL IMPRIMIBLE (A4)            *@
+        @* ===================================================================== *@
+        else if (_pestana == PestanaVista.Presupuesto)
+        {
+            <div class="card shadow-sm nw-print-doc">
+                <div class="card-body p-4">
+                    @* Encabezado profesional: Empresa (configurable por EmpresaId en Bloque 2) + Documento *@
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 pb-3 mb-3 border-bottom border-2 border-dark">
+                        <div>
+                            <h3 class="fw-bold text-dark mb-1">@EmpresaNombreBase</h3>
+                            <div class="small text-muted">
+                                @EmpresaSubtituloBase
+                            </div>
+                            <div class="small text-muted">
+                                RNC: @EmpresaRncBase · Tel: @EmpresaTelefonoBase
+                            </div>
+                        </div>
+
+                        <div class="text-end">
+                            <div class="text-uppercase fw-bold fs-5 text-primary lh-1 mb-1">
+                                COTIZACIÓN / PRESUPUESTO
+                            </div>
+                            <div class="fw-bold fs-6 text-dark">
+                                No. @_orden.OrderNumber
+                                <span class="badge @ClaseBadgeEstado(_orden.Status) ms-1 align-middle">@EtiquetaEstado(_orden.Status)</span>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                <strong>Emisión:</strong> @FormatearFechaHoraProfesional(_orden.FechaCreacion)
+                            </div>
+                            <div class="small text-muted">
+                                <strong>Impreso:</strong> @FormatearFechaHoraProfesional(DateTime.UtcNow)
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Bloque de datos del cliente *@
+                    <div class="p-3 rounded bg-light border mb-3">
+                        <div class="row g-2 small">
+                            <div class="col-12 col-sm-7">
+                                <span class="text-muted text-uppercase fw-semibold d-block">Cliente</span>
+                                <span class="fw-bold fs-6 text-dark">@_orden.CustomerName</span>
+                                @if (!string.IsNullOrWhiteSpace(_orden.CustomerAddress))
+                                {
+                                    <div class="text-muted">@_orden.CustomerAddress</div>
+                                }
+                            </div>
+                            <div class="col-12 col-sm-5 text-sm-end">
+                                @if (!string.IsNullOrWhiteSpace(_orden.CustomerPhone))
+                                {
+                                    <div><span class="text-muted">Teléfono:</span> <strong>@_orden.CustomerPhone</strong></div>
+                                }
+                                <div><span class="text-muted">Moneda:</span> <strong>Pesos Dominicanos (RD$)</strong></div>
+                                <div><span class="text-muted">Validez:</span> <strong>15 días calendario</strong></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (_items.Count == 0)
+                    {
+                        <p class="text-muted text-center my-4">No hay ítems en este presupuesto.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-3">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th class="text-center" style="width: 40px;">#</th>
+                                        <th>Descripción y Especificaciones</th>
+                                        <th class="text-center" style="width: 65px;">Unidad</th>
+                                        <th class="text-center" style="width: 60px;">Cant.</th>
+                                        <th class="text-end" style="width: 120px;">Precio Unit.</th>
+                                        <th class="text-end" style="width: 130px;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in _items)
+                                    {
+                                        var modelo = ObtenerModelo(item.ProductModelId);
+                                        var precio = _calculo?.ItemPrices.FirstOrDefault(p => p.ItemId == item.Id);
+                                        var unitPrice = precio?.UnitPrice ?? item.CalculatedUnitPrice;
+                                        var lineTotal = precio?.LineTotal ?? item.CalculatedLineTotal;
+
+                                        <tr>
+                                            <td class="text-center fw-semibold">@item.LineOrder</td>
+                                            <td>
+                                                <div class="fw-semibold text-dark">@(modelo?.Name ?? "Producto")</div>
+                                                <small class="text-muted d-block">
+                                                    Medidas: @(new MeasureFraction(item.WidthSixteenths)) × @(new MeasureFraction(item.HeightSixteenths))@(item.DepthSixteenths is > 0 ? $" × {new MeasureFraction(item.DepthSixteenths.Value)}" : "")
+                                                    · @ResumenConfiguracionItem(item)
+                                                    @if (!string.IsNullOrWhiteSpace(item.MaterialColor))
+                                                    {
+                                                        <span> · @item.MaterialColor</span>
+                                                    }
+                                                </small>
+                                                @if (!string.IsNullOrWhiteSpace(item.Notes))
+                                                {
+                                                    <small class="text-muted fst-italic d-block">Nota: @item.Notes</small>
+                                                }
+                                            </td>
+                                            <td class="text-center small text-muted">Und.</td>
+                                            <td class="text-center fw-semibold">@item.Quantity</td>
+                                            <td class="text-end text-nowrap">RD$ @unitPrice.ToString("N2")</td>
+                                            <td class="text-end text-nowrap fw-semibold">RD$ @lineTotal.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @if (_calculo is not null)
+                        {
+                            <div class="d-flex justify-content-end">
+                                <div class="border rounded p-3 bg-light" style="min-width: 280px;">
+                                    <div class="d-flex justify-content-between py-1 small">
+                                        <span class="text-muted">Subtotal:</span>
+                                        <span class="fw-semibold">RD$ @_calculo.SubtotalBeforeDiscount.ToString("N2")</span>
+                                    </div>
+                                    @if (_calculo.DiscountAmount > 0)
+                                    {
+                                        <div class="d-flex justify-content-between py-1 small text-danger">
+                                            <span>Descuento (@_calculo.DiscountPercent.ToString("0.##")%):</span>
+                                            <span>- RD$ @_calculo.DiscountAmount.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    @if (_calculo.TaxAmount > 0)
+                                    {
+                                        <div class="d-flex justify-content-between py-1 small">
+                                            <span>ITBIS (@_calculo.TaxRatePercent.ToString("0.##")%):</span>
+                                            <span>RD$ @_calculo.TaxAmount.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    <div class="d-flex justify-content-between border-top border-dark pt-2 mt-2 fs-5 fw-bold text-dark">
+                                        <span>TOTAL:</span>
+                                        <span class="text-success">RD$ @_calculo.TotalQuoteAmount.ToString("N2")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(_orden.Notes))
+                        {
+                            <div class="mt-4 pt-3 border-top">
+                                <strong class="small text-uppercase text-muted d-block mb-1">Notas y Condiciones Comerciales</strong>
+                                <p class="small mb-0">@_orden.Notes</p>
+                            </div>
+                        }
+
+                        @* Líneas de firma para aprobación en A4 *@
+                        <div class="row g-4 mt-5 pt-4 text-center nw-print-signatures">
+                            <div class="col-6">
+                                <div class="border-top border-dark pt-2 mx-3 small text-muted">
+                                    Firma del Cliente / Aceptación
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="border-top border-dark pt-2 mx-3 small text-muted">
+                                    Firma Autorizada
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    // Datos base temporales (en Bloque 2 se leerán automáticamente del perfil de cada EmpresaId desde Admin)
+    private const string EmpresaNombreBase = "Mi Empresa · NoteWork";
+    private const string EmpresaSubtituloBase = "Fabricación e Instalación a Medida";
+    private const string EmpresaRncBase = "Por configurar";
+    private const string EmpresaTelefonoBase = "Por configurar";
+
+    private enum PestanaVista { Items, Cortes, Compras, Presupuesto }
+    private PestanaVista _pestana = PestanaVista.Items;
+
+    private WorkOrderDetalleDto? _orden;
+    private CatalogoUniversalPaqueteDto? _catalogo;
+    private readonly List<WorkOrderItemDto> _items = [];
+    private OrderPricingResult? _calculo;
+
+    private bool _cargando = true;
+    private string? _error;
+    private string? _mensajeOk;
+
+    // Cabecera editable
+    private bool _editandoCabecera;
+    private bool _guardandoCabecera;
+    private string _cabCliente = "";
+    private string _cabTelefono = "";
+    private string _cabDireccion = "";
+    private decimal _cabDescuento;
+    private decimal _cabItbis;
+    private string _cabNotas = "";
+
+    // Formulario inline de ítem
+    private bool _mostrarFormItem;
+    private Guid? _editandoItemId;
+    private bool _guardandoItem;
+    private Guid? _confirmarBorrarItemId;
+    private bool _borrandoItem;
+
+    private Guid _formCategoriaId;
+    private Guid _formModeloId;
+    private int _formCantidad = 1;
+    private string _formAnchoTexto = "48";
+    private string _formAltoTexto = "48";
+    private string _formProfundidadTexto = "24";
+    private int _formHojas = 2;
+    private int _formPuertas = 2;
+    private int _formGavetas = 0;
+    private int _formRepisas = 1;
+    private bool _formRielBajo;
+    private string _formColor = "";
+    private decimal? _formMargenCustom;
+    private string _formNotas = "";
+
+    private ProductCategoryDto? CategoriaSeleccionada =>
+        _catalogo?.Categories.FirstOrDefault(c => c.Id == _formCategoriaId);
+
+    private IEnumerable<ProductModelDto> ModelosDeCategoriaSeleccionada =>
+        _catalogo?.Models.Where(m => m.CategoryId == _formCategoriaId) ?? [];
+
+    private ProductModelDto? ModeloSeleccionado =>
+        _catalogo?.Models.FirstOrDefault(m => m.Id == _formModeloId);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CargarTodoAsync();
+    }
+
+    private async Task CargarTodoAsync()
+    {
+        _cargando = true;
+        _error = null;
+
+        var tareaCatalogo = ServicioCatalogo.ObtenerPaqueteAsync();
+        var tareaOrden = ServicioOrdenes.ObtenerDetalleAsync(Id);
+
+        await Task.WhenAll(tareaCatalogo, tareaOrden);
+
+        _catalogo = tareaCatalogo.Result;
+        _orden = tareaOrden.Result;
+
+        if (_catalogo is null)
+            _error = ServicioCatalogo.UltimoError ?? "No se pudo cargar el catálogo.";
+        else if (_orden is null)
+            _error = ServicioOrdenes.UltimoError ?? "No se pudo cargar la orden.";
+        else
+        {
+            _items.Clear();
+            _items.AddRange(_orden.Items.OrderBy(i => i.LineOrder));
+            CargarCamposCabecera(_orden);
+            InicializarCategoriaPorDefecto();
+            RecalcularOrdenEnMemoria();
+        }
+
+        _cargando = false;
+    }
+
+    private void CargarCamposCabecera(WorkOrderDetalleDto orden)
+    {
+        _cabCliente = orden.CustomerName;
+        _cabTelefono = orden.CustomerPhone ?? "";
+        _cabDireccion = orden.CustomerAddress ?? "";
+        _cabDescuento = orden.DiscountPercent;
+        _cabItbis = orden.TaxRatePercent;
+        _cabNotas = orden.Notes ?? "";
+    }
+
+    private void InicializarCategoriaPorDefecto()
+    {
+        if (_catalogo is null || _catalogo.Categories.Count == 0) return;
+
+        if (_formCategoriaId == Guid.Empty)
+        {
+            _formCategoriaId = _catalogo.Categories[0].Id;
+            var primerModelo = _catalogo.Models.FirstOrDefault(m => m.CategoryId == _formCategoriaId);
+            _formModeloId = primerModelo?.Id ?? Guid.Empty;
+        }
+    }
+
+    private void RecalcularOrdenEnMemoria()
+    {
+        if (_orden is null || _catalogo is null)
+        {
+            _calculo = null;
+            return;
+        }
+
+        var inputs = _items.Select(i => i.ToMotorInput()).ToList();
+        _calculo = AutoPricingEngine.CalculateOrder(
+            items: inputs,
+            models: ServicioCatalogo.ObtenerModelosMotor(),
+            materials: ServicioCatalogo.ObtenerMaterialesMotor(),
+            discountPercent: _orden.DiscountPercent,
+            taxRatePercent: _orden.TaxRatePercent);
+    }
+
+    // =========================================================================
+    // CABECERA Y ESTADO
+    // =========================================================================
+
+    private void CancelarEdicionCabecera()
+    {
+        if (_orden is not null) CargarCamposCabecera(_orden);
+        _editandoCabecera = false;
+    }
+
+    private async Task GuardarCabeceraAsync()
+    {
+        if (_orden is null) return;
+        _error = null;
+        _mensajeOk = null;
+
+        if (string.IsNullOrWhiteSpace(_cabCliente))
+        {
+            _error = "El nombre del cliente es obligatorio.";
+            return;
+        }
+
+        _guardandoCabecera = true;
+
+        _orden = _orden with
+        {
+            CustomerName = _cabCliente.Trim(),
+            CustomerPhone = string.IsNullOrWhiteSpace(_cabTelefono) ? null : _cabTelefono.Trim(),
+            CustomerAddress = string.IsNullOrWhiteSpace(_cabDireccion) ? null : _cabDireccion.Trim(),
+            DiscountPercent = Math.Clamp(_cabDescuento, 0m, 100m),
+            TaxRatePercent = Math.Max(0m, _cabItbis),
+            Notes = string.IsNullOrWhiteSpace(_cabNotas) ? null : _cabNotas.Trim()
+        };
+
+        RecalcularOrdenEnMemoria();
+        var ok = await SincronizarCabeceraConApiAsync();
+        _guardandoCabecera = false;
+
+        if (ok)
+        {
+            _editandoCabecera = false;
+            _mensajeOk = "Datos de la orden actualizados.";
+        }
+    }
+
+    private async Task AlCambiarEstadoAsync(ChangeEventArgs e)
+    {
+        if (_orden is null) return;
+        if (!Enum.TryParse<WorkOrderStatus>(e.Value?.ToString(), out var nuevoEstado)) return;
+
+        _guardandoCabecera = true;
+        _error = null;
+
+        var (exito, error) = await ServicioOrdenes.CambiarEstadoAsync(_orden.Id, nuevoEstado);
+        _guardandoCabecera = false;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo cambiar el estado.";
+            return;
+        }
+
+        _orden = _orden with { Status = nuevoEstado };
+        _mensajeOk = $"Estado actualizado a {EtiquetaEstado(nuevoEstado)}.";
+    }
+
+    private async Task<bool> SincronizarCabeceraConApiAsync()
+    {
+        if (_orden is null) return false;
+
+        var subtotalMat = _calculo?.SubtotalMaterials ?? 0m;
+        var subtotalLab = _calculo?.SubtotalLabor ?? 0m;
+        var totalQuote = _calculo?.TotalQuoteAmount ?? 0m;
+
+        var dto = new CrearActualizarWorkOrderDto(
+            OrderType: _orden.OrderType,
+            CustomerId: _orden.CustomerId,
+            ProjectId: _orden.ProjectId,
+            CustomerName: _orden.CustomerName,
+            CustomerPhone: _orden.CustomerPhone,
+            CustomerAddress: _orden.CustomerAddress,
+            Status: _orden.Status,
+            TaxRatePercent: _orden.TaxRatePercent,
+            DiscountPercent: _orden.DiscountPercent,
+            SubtotalMaterials: subtotalMat,
+            SubtotalLabor: subtotalLab,
+            TotalQuoteAmount: totalQuote,
+            Notes: _orden.Notes,
+            PricingSnapshotJson: _orden.PricingSnapshotJson);
+
+        var (exito, error) = await ServicioOrdenes.ActualizarAsync(_orden.Id, dto);
+        if (!exito)
+        {
+            _error = error ?? "No se pudieron guardar los totales de la orden.";
+            return false;
+        }
+
+        _orden = _orden with
+        {
+            SubtotalMaterials = subtotalMat,
+            SubtotalLabor = subtotalLab,
+            TotalQuoteAmount = totalQuote
+        };
+
+        return true;
+    }
+
+    // =========================================================================
+    // FORMULARIO INLINE DE ÍTEMS
+    // =========================================================================
+
+    private void AbrirNuevoItem()
+    {
+        if (_mostrarFormItem && _editandoItemId is null)
+        {
+            _mostrarFormItem = false;
+            return;
+        }
+
+        _editandoItemId = null;
+        _error = null;
+        _mensajeOk = null;
+        InicializarCategoriaPorDefecto();
+
+        _formCantidad = 1;
+        _formAnchoTexto = "48";
+        _formAltoTexto = "48";
+        _formProfundidadTexto = "24";
+        _formHojas = 2;
+        _formPuertas = 2;
+        _formGavetas = 0;
+        _formRepisas = 1;
+        _formRielBajo = false;
+        _formColor = "";
+        _formMargenCustom = null;
+        _formNotas = "";
+
+        _mostrarFormItem = true;
+    }
+
+    private void EditarItem(WorkOrderItemDto item)
+    {
+        _error = null;
+        _mensajeOk = null;
+        _editandoItemId = item.Id;
+
+        var modelo = ObtenerModelo(item.ProductModelId);
+        if (modelo is not null)
+        {
+            _formCategoriaId = modelo.CategoryId;
+            _formModeloId = modelo.Id;
+        }
+
+        _formCantidad = item.Quantity;
+        _formAnchoTexto = new MeasureFraction(item.WidthSixteenths).ToString().Replace("\"", "");
+        _formAltoTexto = new MeasureFraction(item.HeightSixteenths).ToString().Replace("\"", "");
+        _formProfundidadTexto = item.DepthSixteenths.HasValue
+            ? new MeasureFraction(item.DepthSixteenths.Value).ToString().Replace("\"", "")
+            : "24";
+        _formHojas = item.LeafCount;
+        _formPuertas = item.DoorCount;
+        _formGavetas = item.DrawerCount;
+        _formRepisas = item.ShelfCount;
+        _formRielBajo = item.IsLowTrack;
+        _formColor = item.MaterialColor ?? "";
+        _formMargenCustom = item.CustomMarginPercent;
+        _formNotas = item.Notes ?? "";
+
+        _mostrarFormItem = true;
+    }
+
+    private void CerrarFormItem()
+    {
+        _mostrarFormItem = false;
+        _editandoItemId = null;
+    }
+
+    private void AlCambiarCategoria(ChangeEventArgs e)
+    {
+        if (!Guid.TryParse(e.Value?.ToString(), out var catId)) return;
+        _formCategoriaId = catId;
+        var primerModelo = _catalogo?.Models.FirstOrDefault(m => m.CategoryId == catId);
+        _formModeloId = primerModelo?.Id ?? Guid.Empty;
+    }
+
+    private void AlCambiarModelo(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var modId))
+            _formModeloId = modId;
+    }
+
+    private ItemPriceResult? CalcularPreviewItem()
+    {
+        if (_catalogo is null || _formModeloId == Guid.Empty || _formCantidad < 1)
+            return null;
+
+        if (!MeasureFraction.TryParse(_formAnchoTexto, out var ancho) || ancho.Sixteenths <= 0)
+            return null;
+
+        if (!MeasureFraction.TryParse(_formAltoTexto, out var alto) || alto.Sixteenths <= 0)
+            return null;
+
+        MeasureFraction? profundidad = null;
+        if (CategoriaSeleccionada?.UsesDepth == true)
+        {
+            if (!MeasureFraction.TryParse(_formProfundidadTexto, out var prof) || prof.Sixteenths <= 0)
+                return null;
+            profundidad = prof;
+        }
+
+        var input = new BreakdownItemInput(
+            ItemId: _editandoItemId ?? Guid.Empty,
+            LineOrder: 1,
+            ModelId: _formModeloId,
+            Quantity: _formCantidad,
+            Width: ancho,
+            Height: alto,
+            Depth: profundidad,
+            LeafCount: CategoriaSeleccionada?.UsesLeaves == true ? Math.Max(0, _formHojas) : 0,
+            DoorCount: CategoriaSeleccionada?.UsesDoors == true ? Math.Max(0, _formPuertas) : 0,
+            DrawerCount: CategoriaSeleccionada?.UsesDrawers == true ? Math.Max(0, _formGavetas) : 0,
+            ShelfCount: CategoriaSeleccionada?.UsesShelves == true ? Math.Max(0, _formRepisas) : 0,
+            IsLowTrack: CategoriaSeleccionada?.UsesLowTrack == true && _formRielBajo,
+            MaterialColor: string.IsNullOrWhiteSpace(_formColor) ? null : _formColor.Trim(),
+            CustomMarginPercent: _formMargenCustom,
+            BoardThicknessOverrideSixteenths: null);
+
+        var resultado = AutoPricingEngine.CalculateOrder(
+            items: [input],
+            models: ServicioCatalogo.ObtenerModelosMotor(),
+            materials: ServicioCatalogo.ObtenerMaterialesMotor());
+
+        return resultado.ItemPrices.FirstOrDefault();
+    }
+
+    private async Task GuardarItemAsync()
+    {
+        if (_orden is null) return;
+        _error = null;
+        _mensajeOk = null;
+
+        if (_formModeloId == Guid.Empty)
+        {
+            _error = "Selecciona un modelo válido.";
+            return;
+        }
+        if (_formCantidad < 1)
+        {
+            _error = "La cantidad debe ser al menos 1.";
+            return;
+        }
+        if (!MeasureFraction.TryParse(_formAnchoTexto, out var ancho) || ancho.Sixteenths <= 0)
+        {
+            _error = "Escribe un ancho válido en pulgadas o fracciones 1/16\" (ej: 48 1/2).";
+            return;
+        }
+        if (!MeasureFraction.TryParse(_formAltoTexto, out var alto) || alto.Sixteenths <= 0)
+        {
+            _error = "Escribe un alto válido en pulgadas o fracciones 1/16\" (ej: 36 3/4).";
+            return;
+        }
+
+        int? profundidadSixteenths = null;
+        if (CategoriaSeleccionada?.UsesDepth == true)
+        {
+            if (!MeasureFraction.TryParse(_formProfundidadTexto, out var prof) || prof.Sixteenths <= 0)
+            {
+                _error = "Escribe una profundidad válida en pulgadas o fracciones 1/16\".";
+                return;
+            }
+            profundidadSixteenths = prof.Sixteenths;
+        }
+
+        var preview = CalcularPreviewItem();
+        var unitPrice = preview?.UnitPrice ?? 0m;
+        var lineTotal = preview?.LineTotal ?? 0m;
+
+        var lineOrder = _editandoItemId.HasValue
+            ? _items.FirstOrDefault(i => i.Id == _editandoItemId.Value)?.LineOrder ?? (_items.Count + 1)
+            : (_items.Count == 0 ? 1 : _items.Max(i => i.LineOrder) + 1);
+
+        var dto = new CrearActualizarWorkOrderItemDto(
+            AreaNodeId: null,
+            ProductModelId: _formModeloId,
+            LineOrder: lineOrder,
+            Quantity: _formCantidad,
+            WidthSixteenths: ancho.Sixteenths,
+            HeightSixteenths: alto.Sixteenths,
+            DepthSixteenths: profundidadSixteenths,
+            LeafCount: CategoriaSeleccionada?.UsesLeaves == true ? Math.Max(0, _formHojas) : 0,
+            DoorCount: CategoriaSeleccionada?.UsesDoors == true ? Math.Max(0, _formPuertas) : 0,
+            DrawerCount: CategoriaSeleccionada?.UsesDrawers == true ? Math.Max(0, _formGavetas) : 0,
+            ShelfCount: CategoriaSeleccionada?.UsesShelves == true ? Math.Max(0, _formRepisas) : 0,
+            IsLowTrack: CategoriaSeleccionada?.UsesLowTrack == true && _formRielBajo,
+            BoardThicknessOverrideSixteenths: null,
+            MaterialColor: string.IsNullOrWhiteSpace(_formColor) ? null : _formColor.Trim(),
+            CustomMarginPercent: _formMargenCustom,
+            CalculatedUnitPrice: unitPrice,
+            CalculatedLineTotal: lineTotal,
+            Notes: string.IsNullOrWhiteSpace(_formNotas) ? null : _formNotas.Trim());
+
+        _guardandoItem = true;
+
+        if (_editandoItemId.HasValue)
+        {
+            var itemId = _editandoItemId.Value;
+            var (exito, error) = await ServicioOrdenes.ActualizarItemAsync(_orden.Id, itemId, dto);
+            if (!exito)
+            {
+                _guardandoItem = false;
+                _error = error ?? "No se pudo actualizar el ítem.";
+                return;
+            }
+
+            var idx = _items.FindIndex(i => i.Id == itemId);
+            if (idx >= 0)
+            {
+                _items[idx] = new WorkOrderItemDto(
+                    itemId, _orden.Id, dto.AreaNodeId, dto.ProductModelId, dto.LineOrder,
+                    dto.Quantity, dto.WidthSixteenths, dto.HeightSixteenths, dto.DepthSixteenths,
+                    dto.LeafCount, dto.DoorCount, dto.DrawerCount, dto.ShelfCount, dto.IsLowTrack,
+                    dto.BoardThicknessOverrideSixteenths, dto.MaterialColor, dto.CustomMarginPercent,
+                    dto.CalculatedUnitPrice, dto.CalculatedLineTotal, dto.Notes);
+            }
+        }
+        else
+        {
+            var (creado, error) = await ServicioOrdenes.AgregarItemAsync(_orden.Id, dto);
+            if (error is not null || creado is null)
+            {
+                _guardandoItem = false;
+                _error = error ?? "No se pudo agregar el ítem.";
+                return;
+            }
+
+            _items.Add(creado);
+        }
+
+        RecalcularOrdenEnMemoria();
+        await SincronizarCabeceraConApiAsync();
+
+        _guardandoItem = false;
+        CerrarFormItem();
+        _mensajeOk = "Ítem guardado y totales actualizados.";
+    }
+
+    private async Task BorrarItemAsync(Guid itemId)
+    {
+        if (_orden is null) return;
+        _borrandoItem = true;
+        _error = null;
+
+        var (exito, error) = await ServicioOrdenes.BorrarItemAsync(_orden.Id, itemId);
+        _borrandoItem = false;
+        _confirmarBorrarItemId = null;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar el ítem.";
+            return;
+        }
+
+        _items.RemoveAll(i => i.Id == itemId);
+        RecalcularOrdenEnMemoria();
+        await SincronizarCabeceraConApiAsync();
+    }
+
+    // =========================================================================
+    // HELPERS VISUALES E IMPRESIÓN
+    // =========================================================================
+
+    private async Task ImprimirAsync()
+    {
+        if (_pestana == PestanaVista.Items)
+        {
+            _pestana = PestanaVista.Presupuesto;
+            StateHasChanged();
+            await Task.Delay(60);
+        }
+
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    private ProductModelDto? ObtenerModelo(Guid modeloId) =>
+        _catalogo?.Models.FirstOrDefault(m => m.Id == modeloId);
+
+    private static string FormatearFechaHoraProfesional(DateTime fechaUtc)
+    {
+        var local = fechaUtc.ToLocalTime();
+        var cultura = new CultureInfo("es-DO");
+        var texto = local.ToString("dddd, dd/MM/yyyy · hh:mm tt", cultura);
+        return string.IsNullOrEmpty(texto) ? texto : char.ToUpper(texto[0], cultura) + texto[1..];
+    }
+
+    private static string ResumenConfiguracionItem(WorkOrderItemDto item)
+    {
+        var partes = new List<string>();
+        if (item.LeafCount > 0) partes.Add(item.LeafCount == 1 ? "1 hoja" : $"{item.LeafCount} hojas");
+        if (item.DoorCount > 0) partes.Add(item.DoorCount == 1 ? "1 puerta" : $"{item.DoorCount} puertas");
+        if (item.DrawerCount > 0) partes.Add(item.DrawerCount == 1 ? "1 gaveta" : $"{item.DrawerCount} gavetas");
+        if (item.ShelfCount > 0) partes.Add(item.ShelfCount == 1 ? "1 repisa" : $"{item.ShelfCount} repisas");
+        if (item.IsLowTrack) partes.Add("Riel bajo");
+        return partes.Count == 0 ? "Configuración estándar" : string.Join(" · ", partes);
+    }
+
+    private static string EtiquetaUnidad(int cantidad, string etiqueta)
+    {
+        if (cantidad != 1) return etiqueta;
+        return etiqueta.Trim().ToLowerInvariant() switch
+        {
+            "barras" => "barra",
+            "planchas" => "plancha",
+            "pies" => "pie",
+            "unidades" => "unidad",
+            _ => etiqueta
+        };
+    }
+
+    private static string EtiquetaEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "Borrador",
+        WorkOrderStatus.Quoted => "Cotizado",
+        WorkOrderStatus.InProduction => "En Producción",
+        WorkOrderStatus.Completed => "Completado",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseBadgeEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "bg-secondary",
+        WorkOrderStatus.Quoted => "bg-info text-dark",
+        WorkOrderStatus.InProduction => "bg-warning text-dark",
+        WorkOrderStatus.Completed => "bg-success",
+        _ => "bg-light text-dark"
+    };
+}

@@ -1,64 +1,277 @@
 ﻿@page "/"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Entidades.Universal
+@using NoteWork.Client.Servicios
+
+@inject ServicioOrdenes ServicioOrdenes
+@inject ServicioCatalogoUniversal ServicioCatalogo
+@inject NavigationManager Navegador
 
 <PageTitle>Inicio - NoteWork</PageTitle>
 
-<div class="container mt-4">
+<div class="container mt-3 mb-5">
     <AuthorizeView>
         <Authorized>
-            <div class="mb-4">
-                <h2 class="mb-1">Bienvenido a NoteWork</h2>
-                <p class="text-muted mb-0">Selecciona un módulo para comenzar a trabajar.</p>
+            @* ============================================================= *@
+            @* BLOQUE 1: CREAR PROYECTO / LEVANTAMIENTO RÁPIDO               *@
+            @* ============================================================= *@
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                    <h4 class="mb-0 fw-bold text-primary">Crear Proyecto</h4>
+                    <small class="text-muted">Elige un modelo o crea una orden general para medir</small>
+                </div>
+                <button type="button" class="btn btn-primary" @onclick="() => AbrirCreacionRapida(null)">
+                    + Nuevo Proyecto
+                </button>
             </div>
-            <hr />
 
-            <div class="row g-3 mt-1">
-                <!-- Acceso directo a Proyectos (fondo azul muy suave) -->
-                <div class="col-12 col-md-6 col-lg-4">
-                    <a href="proyectos" class="text-decoration-none text-dark">
-                        <div class="card h-100 shadow-sm" style="background-color: #eef5ff; border: 1px solid #d4e4ff;">
-                            <div class="card-body p-4">
-                                <h5 class="card-title mb-2 fw-bold text-primary">Proyectos</h5>
-                                <p class="card-text text-muted small mb-0">
-                                    Gestiona presupuestos, áreas y partidas de cotización.
-                                </p>
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center" role="alert">
+                    <span>@_error</span>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _error = null"></button>
+                </div>
+            }
+
+            @* Formulario inline sin fricción (valores prellenados) *@
+            @if (_mostrarCreacionRapida)
+            {
+                <div class="card border-primary shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold text-primary mb-0">
+                                @(string.IsNullOrWhiteSpace(_modeloSeleccionadoNombre)
+                                    ? "Nuevo Proyecto Rápido"
+                                    : $"Nuevo Proyecto · {_modeloSeleccionadoNombre}")
+                            </h6>
+                            <button type="button" class="btn-close" aria-label="Cerrar"
+                                    @onclick="() => _mostrarCreacionRapida = false"
+                                    disabled="@_creando"></button>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Cliente *</label>
+                                <input type="text" class="form-control" maxlength="150"
+                                       @bind="_clienteNombre" placeholder="Ej: Cliente General" />
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Teléfono (opcional)</label>
+                                <input type="tel" class="form-control" maxlength="40"
+                                       @bind="_clienteTelefono" placeholder="809-555-0000" />
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Dirección / Obra (opcional)</label>
+                                <input type="text" class="form-control" maxlength="250"
+                                       @bind="_clienteDireccion" placeholder="Sector / Casa" />
                             </div>
                         </div>
-                    </a>
-                </div>
 
-                <!-- Acceso directo a Clientes (fondo verde menta muy suave) -->
-                <div class="col-12 col-md-6 col-lg-4">
-                    <a href="clientes" class="text-decoration-none text-dark">
-                        <div class="card h-100 shadow-sm" style="background-color: #eefaf3; border: 1px solid #cfefdc;">
-                            <div class="card-body p-4">
-                                <h5 class="card-title mb-2 fw-bold text-success">Clientes</h5>
-                                <p class="card-text text-muted small mb-0">
-                                    Consulta y registra los clientes de tu empresa.
-                                </p>
-                            </div>
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary"
+                                    @onclick="() => _mostrarCreacionRapida = false"
+                                    disabled="@_creando">
+                                Cancelar
+                            </button>
+                            <button type="button" class="btn btn-success fw-semibold"
+                                    @onclick="CrearYMedirAsync"
+                                    disabled="@_creando">
+                                @(_creando ? "Creando..." : "Crear Proyecto y Medir")
+                            </button>
                         </div>
-                    </a>
+                    </div>
                 </div>
+            }
 
-                <!-- Acceso directo a Usuarios (fondo lavanda muy suave, solo visible para Admin) -->
-                @if (context.User.IsInRole("Admin"))
-                {
-                    <div class="col-12 col-md-6 col-lg-4">
-                        <a href="usuarios" class="text-decoration-none text-dark">
-                            <div class="card h-100 shadow-sm" style="background-color: #f4f1ff; border: 1px solid #dfd8ff;">
-                                <div class="card-body p-4">
-                                    <h5 class="card-title mb-2 fw-bold" style="color: #4b3f99;">Usuarios</h5>
-                                    <p class="card-text text-muted small mb-0">
-                                        Administra cuentas activas y contraseñas del equipo.
-                                    </p>
+            @* Tarjetas de modelos precargados *@
+            @if (_cargando)
+            {
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <small class="text-muted ms-2">Cargando modelos y recientes...</small>
+                </div>
+            }
+            else if (_catalogo is not null && _catalogo.Models.Count > 0)
+            {
+                <div class="row g-2 mb-4">
+                    @foreach (var modelo in _catalogo.Models)
+                    {
+                        var categoria = ObtenerNombreCategoria(modelo.CategoryId);
+                        <div class="col-6 col-md-4 col-lg-3">
+                            <button type="button"
+                                    class="card w-100 h-100 text-start shadow-sm border bg-white p-0"
+                                    @onclick="() => AbrirCreacionRapida(modelo.Name)">
+                                <div class="card-body p-3">
+                                    <span class="badge bg-primary-subtle text-primary mb-1">@categoria</span>
+                                    <div class="fw-semibold text-dark small lh-sm">@modelo.Name</div>
+                                    <small class="text-muted">@modelo.Code</small>
                                 </div>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ============================================================= *@
+            @* BLOQUE 2: ACCESO RÁPIDO                                       *@
+            @* ============================================================= *@
+            <div class="mb-4">
+                <h6 class="fw-bold text-muted text-uppercase small mb-2">Acceso Rápido</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="ordenes" class="btn btn-outline-primary">Órdenes</a>
+                    <a href="clientes" class="btn btn-outline-success">Clientes</a>
+                    <a href="proyectos" class="btn btn-outline-secondary">Proyectos</a>
+                    @if (context.User.IsInRole("Admin"))
+                    {
+                        <a href="catalogo" class="btn btn-outline-dark">Catálogo</a>
+                        <a href="usuarios" class="btn btn-outline-dark">Usuarios</a>
+                    }
+                </div>
+            </div>
+
+            @* ============================================================= *@
+            @* BLOQUE 3: PROYECTOS RECIENTES                                 *@
+            @* ============================================================= *@
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold text-muted text-uppercase small mb-0">Proyectos Recientes</h6>
+                <a href="ordenes" class="small text-decoration-none">Ver todos &rarr;</a>
+            </div>
+
+            @if (!_cargando && _recientes.Count == 0)
+            {
+                <div class="alert alert-light border text-center py-3">
+                    <small class="text-muted">Todavía no hay proyectos recientes. Toca un modelo arriba para empezar.</small>
+                </div>
+            }
+            else if (_recientes.Count > 0)
+            {
+                <div class="d-flex flex-column gap-2">
+                    @foreach (var orden in _recientes)
+                    {
+                        <a href="/ordenes/@orden.Id"
+                           class="text-decoration-none text-dark p-3 rounded shadow-sm bg-white border d-flex justify-content-between align-items-center gap-2">
+                            <div style="min-width: 0;">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="fw-bold text-primary">@orden.OrderNumber</span>
+                                    <span class="badge @ClaseBadgeEstado(orden.Status)">@EtiquetaEstado(orden.Status)</span>
+                                </div>
+                                <div class="fw-semibold text-truncate">@orden.CustomerName</div>
+                                <small class="text-muted">
+                                    @orden.ItemCount @(orden.ItemCount == 1 ? "ítem" : "ítems") · @orden.FechaCreacion.ToLocalTime().ToString("dd/MM/yyyy")
+                                </small>
+                            </div>
+                            <div class="text-end text-nowrap">
+                                <div class="fw-bold text-success">RD$ @orden.TotalQuoteAmount.ToString("N2")</div>
+                                <small class="text-primary">Abrir &rarr;</small>
                             </div>
                         </a>
-                    </div>
-                }
-            </div>
+                    }
+                </div>
+            }
         </Authorized>
     </AuthorizeView>
 </div>
+
+@code {
+    private CatalogoUniversalPaqueteDto? _catalogo;
+    private readonly List<WorkOrderResumenDto> _recientes = [];
+
+    private bool _cargando = true;
+    private string? _error;
+
+    // Creación rápida inline
+    private bool _mostrarCreacionRapida;
+    private bool _creando;
+    private string? _modeloSeleccionadoNombre;
+    private string _clienteNombre = "Cliente General";
+    private string _clienteTelefono = "";
+    private string _clienteDireccion = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cargando = true;
+        _error = null;
+
+        var tareaCatalogo = ServicioCatalogo.ObtenerPaqueteAsync();
+        var tareaRecientes = ServicioOrdenes.ObtenerPaginaAsync(pagina: 1, tamanoPagina: 5);
+
+        await Task.WhenAll(tareaCatalogo, tareaRecientes);
+
+        _catalogo = tareaCatalogo.Result;
+        _recientes.Clear();
+        _recientes.AddRange(tareaRecientes.Result.Items);
+
+        _cargando = false;
+    }
+
+    private void AbrirCreacionRapida(string? nombreModelo)
+    {
+        _error = null;
+        _modeloSeleccionadoNombre = nombreModelo;
+        _clienteNombre = "Cliente General";
+        _clienteTelefono = "";
+        _clienteDireccion = "";
+        _mostrarCreacionRapida = true;
+    }
+
+    private async Task CrearYMedirAsync()
+    {
+        _error = null;
+        var nombre = string.IsNullOrWhiteSpace(_clienteNombre)
+            ? "Cliente General"
+            : _clienteNombre.Trim();
+
+        _creando = true;
+
+        var dto = new CrearActualizarWorkOrderDto(
+            OrderType: WorkOrderType.QuickOrder,
+            CustomerId: null,
+            ProjectId: null,
+            CustomerName: nombre,
+            CustomerPhone: string.IsNullOrWhiteSpace(_clienteTelefono) ? null : _clienteTelefono.Trim(),
+            CustomerAddress: string.IsNullOrWhiteSpace(_clienteDireccion) ? null : _clienteDireccion.Trim(),
+            Status: WorkOrderStatus.Draft,
+            TaxRatePercent: 0m,
+            DiscountPercent: 0m,
+            SubtotalMaterials: 0m,
+            SubtotalLabor: 0m,
+            TotalQuoteAmount: 0m,
+            Notes: null,
+            PricingSnapshotJson: null);
+
+        var (creada, error) = await ServicioOrdenes.CrearAsync(dto);
+        _creando = false;
+
+        if (error is not null || creada is null)
+        {
+            _error = error ?? "No se pudo crear el proyecto.";
+            return;
+        }
+
+        Navegador.NavigateTo($"/ordenes/{creada.Id}");
+    }
+
+    private string ObtenerNombreCategoria(Guid categoriaId) =>
+        _catalogo?.Categories.FirstOrDefault(c => c.Id == categoriaId)?.Name ?? "Producto";
+
+    private static string EtiquetaEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "Borrador",
+        WorkOrderStatus.Quoted => "Cotizado",
+        WorkOrderStatus.InProduction => "En Producción",
+        WorkOrderStatus.Completed => "Completado",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseBadgeEstado(WorkOrderStatus estado) => estado switch
+    {
+        WorkOrderStatus.Draft => "bg-secondary",
+        WorkOrderStatus.Quoted => "bg-info text-dark",
+        WorkOrderStatus.InProduction => "bg-warning text-dark",
+        WorkOrderStatus.Completed => "bg-success",
+        _ => "bg-light text-dark"
+    };
+}
