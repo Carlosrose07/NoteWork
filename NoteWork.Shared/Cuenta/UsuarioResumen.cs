@@ -16,11 +16,10 @@ public class UsuarioResumen
     // Correo con el que inicia sesión. Solo se muestra: no se edita.
     public string Email { get; set; } = string.Empty;
 
-    // Nombre para mostrar. Es lo único que el admin puede editar.
+    // Nombre para mostrar.
     public string NombreCompleto { get; set; } = string.Empty;
 
-    // "Admin" o "Usuario". Se muestra para distinguir a quién se está
-    // gestionando. No se cambia desde la app.
+    // "Admin" o "Usuario".
     public string Rol { get; set; } = string.Empty;
 
     // false = desactivado: no puede iniciar sesión ni usar su token.
@@ -29,4 +28,8 @@ public class UsuarioResumen
 
     // Cuándo se creó (en UTC, igual que en Usuario.cs).
     public DateTime FechaCreacion { get; set; }
+
+    // true si el administrador actual tiene permiso para editar, desactivar
+    // o restablecer la contraseña de este usuario.
+    public bool PuedeGestionar { get; set; } = true;
 }

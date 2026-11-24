@@ -168,6 +168,9 @@ namespace NoteWork.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("CreadoPorId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -283,6 +286,9 @@ namespace NoteWork.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Direccion")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
@@ -301,6 +307,9 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("LogoRuta")
                         .HasColumnType("text");
+
+                    b.Property<int>("MaxUsuarios")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Moneda")
                         .IsRequired()

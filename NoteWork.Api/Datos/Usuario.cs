@@ -41,4 +41,12 @@ public class Usuario : IdentityUser<Guid>
     /// clientes no tiene clave foránea: borrar dejaría datos huérfanos.
     /// </summary>
     public bool Activo { get; set; } = true;
+
+    /// <summary>
+    /// Id del administrador que creó este usuario.
+    /// null = Admin Principal (con control total en la empresa).
+    /// Con valor = usuario o admin secundario creado por otro administrador;
+    /// un admin secundario solo puede gestionar a los usuarios que él mismo creó.
+    /// </summary>
+    public Guid? CreadoPorId { get; set; }
 }

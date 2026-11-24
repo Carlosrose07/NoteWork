@@ -70,16 +70,16 @@ public class ServicioUsuarios
     }
 
     // ------------------------------------------------------------------
-    // EDITAR NOMBRE
+    // EDITAR NOMBRE Y ROL
     // ------------------------------------------------------------------
-    // Cambia SOLO el nombre. El correo y el rol no se pueden cambiar desde la app.
-    // La Api revisa que el nombre no esté vacío ni sea demasiado largo.
-    public Task<(bool Exito, string? Error)> EditarNombreAsync(Guid id, string nombreCompleto)
+    // Cambia el nombre y el rol ("Usuario" o "Admin"). El correo no se toca.
+    // La Api valida los datos y que nunca quede la empresa sin un Admin activo.
+    public Task<(bool Exito, string? Error)> EditarNombreAsync(Guid id, string nombreCompleto, string rol = "Usuario")
         => EnviarAsync(
             () => _http.PutAsJsonAsync(
                 $"api/cuenta/usuarios/{id}",
-                new EditarUsuarioSolicitud { NombreCompleto = nombreCompleto }),
-            "No se pudo guardar el nombre. Inténtalo de nuevo.");
+                new EditarUsuarioSolicitud { NombreCompleto = nombreCompleto, Rol = rol }),
+            "No se pudo guardar los cambios. Inténtalo de nuevo.");
 
     // ------------------------------------------------------------------
     // DESACTIVAR / REACTIVAR

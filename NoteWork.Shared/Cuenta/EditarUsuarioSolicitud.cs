@@ -20,4 +20,8 @@ public class EditarUsuarioSolicitud
     [Required(ErrorMessage = "El nombre es obligatorio.")]
     [StringLength(150, MinimumLength = 2, ErrorMessage = "El nombre debe tener entre 2 y 150 caracteres.")]
     public string NombreCompleto { get; set; } = string.Empty;
+
+    // Rol dentro de su empresa ("Usuario" o "Admin"). La Api impide asignar "SuperAdmin"
+    // o quitarle el rol Admin al último administrador activo de la empresa.
+    public string Rol { get; set; } = "Usuario";
 }

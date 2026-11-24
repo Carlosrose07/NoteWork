@@ -28,4 +28,7 @@ public class CrearUsuarioSolicitud
     [Required(ErrorMessage = "La contraseña es obligatoria.")]
     [StringLength(100, MinimumLength = 8, ErrorMessage = "La contraseña debe tener al menos 8 caracteres.")]
     public string Password { get; set; } = string.Empty;
+
+    // Rol dentro de su empresa ("Usuario" o "Admin"). La Api valida que nunca sea "SuperAdmin".
+    public string Rol { get; set; } = "Usuario";
 }

@@ -27,4 +27,10 @@ public class Empresa : EntidadBase
 
     // Unidad por defecto al crear proyectos nuevos
     public UnidadMedida UnidadPorDefecto { get; set; } = UnidadMedida.Pulgadas;
+
+    // Límite de usuarios permitidos para esta empresa (solo SuperAdmin lo modifica)
+    public int MaxUsuarios { get; set; } = 3;
+
+    // Permite pausar el acceso de la empresa si vence la licencia
+    public bool Activa { get; set; } = true;
 }

@@ -7,38 +7,24 @@ using NoteWork.Shared.Cuenta;
 namespace NoteWork.Api.Endpoints;
 
 // Endpoints de GESTIÓN de usuarios (Bloque B). Solo los puede usar un Admin.
-// Va en un archivo aparte de CuentaEndpoints (login, /yo, crear) para que
-// cada archivo tenga una sola responsabilidad y no crezca sin control.
 public static class UsuariosEndpoints
 {
-    // Reglas de longitud del nombre alineadas con ListaUsuarios.razor (entre 2 y 150 caracteres).
     private const int MinLongitudNombre = 2;
     private const int MaxLongitudNombre = 150;
 
     public static IEndpointRouteBuilder MapUsuariosEndpoints(this IEndpointRouteBuilder app)
     {
-        // Mismo prefijo que "crear usuario" (/api/cuenta/usuarios). No choca:
-        // aquí GET/PUT/POST con /{id}, allá un POST sin id (crear).
-        // Todo el grupo exige sesión Y rol Admin. Sin token -> 401; con token
-        // pero sin ser Admin -> 403. El control real está aquí, en el servidor.
         var grupo = app.MapGroup("/api/cuenta/usuarios")
             .RequireAuthorization(politica => politica.RequireRole("Admin"));
 
-        // GET /api/cuenta/usuarios -> lista de usuarios de la empresa del admin.
         grupo.MapGet("/", ListarAsync);
 
-        // PUT /api/cuenta/usuarios/{id} -> cambia SOLO el nombre (correo y rol no se tocan).
-        // ValidarSolicitud ejecuta las reglas del DTO antes de entrar (mismo filtro de A2).
         grupo.MapPut("/{id:guid}", EditarNombreAsync)
             .ValidarSolicitud<EditarUsuarioSolicitud>();
 
-        // POST .../{id}/desactivar y .../reactivar -> prenden y apagan el campo Activo.
-        // No borramos al usuario: sus proyectos y clientes guardan su Id (UsuarioId)
-        // y no hay clave foránea, así que borrarlo dejaría datos huérfanos.
         grupo.MapPost("/{id:guid}/desactivar", DesactivarAsync);
         grupo.MapPost("/{id:guid}/reactivar", ReactivarAsync);
 
-        // POST .../{id}/password -> el admin escribe una contraseña nueva.
         grupo.MapPost("/{id:guid}/password", RestablecerPasswordAsync)
             .ValidarSolicitud<RestablecerPasswordSolicitud>();
 
@@ -46,23 +32,19 @@ public static class UsuariosEndpoints
     }
 
     // ------------------------------------------------------------------
-    // LISTAR (sin cambios respecto a la versión anterior)
+    // LISTAR
     // ------------------------------------------------------------------
     private static async Task<IResult> ListarAsync(
         ClaimsPrincipal admin,
         UserManager<Usuario> userManager,
         AppDbContext db)
     {
-        // 1. Quién llama. CLAVE DE SEGURIDAD: la empresa sale de la base de
-        //    datos, nunca de la petición, así un admin no puede ver usuarios
-        //    de otra empresa.
         var adminActual = await userManager.GetUserAsync(admin);
         if (adminActual is null)
             return Results.Unauthorized();
 
-        // 2. Usuarios de ESA empresa. AsNoTracking: solo leemos, no editamos,
-        //    y así EF gasta menos memoria. Traemos solo las columnas necesarias
-        //    (nunca PasswordHash ni otros datos internos de Identity).
+        var esAdminPrincipal = adminActual.CreadoPorId is null;
+
         var usuarios = await db.Users
             .AsNoTracking()
             .Where(u => u.EmpresaId == adminActual.EmpresaId)
@@ -73,12 +55,11 @@ public static class UsuariosEndpoints
                 u.Email,
                 u.NombreCompleto,
                 u.Activo,
-                u.FechaCreacion
+                u.FechaCreacion,
+                u.CreadoPorId
             })
             .ToListAsync();
 
-        // 3. Roles de esos usuarios, en UNA sola consulta (en vez de una por
-        //    usuario). Después los unimos en memoria con un diccionario.
         var ids = usuarios.Select(u => u.Id).ToList();
 
         var roles = await (
@@ -92,7 +73,6 @@ public static class UsuariosEndpoints
             .GroupBy(x => x.UserId)
             .ToDictionary(g => g.Key, g => g.First().Rol ?? string.Empty);
 
-        // 4. Armamos la respuesta con el modelo de Shared.
         var resultado = usuarios.Select(u => new UsuarioResumen
         {
             Id = u.Id,
@@ -100,26 +80,27 @@ public static class UsuariosEndpoints
             NombreCompleto = u.NombreCompleto,
             Rol = rolPorUsuario.GetValueOrDefault(u.Id, string.Empty),
             Activo = u.Activo,
-            FechaCreacion = u.FechaCreacion
+            FechaCreacion = u.FechaCreacion,
+            PuedeGestionar = esAdminPrincipal || u.CreadoPorId == adminActual.Id
         }).ToList();
 
         return Results.Ok(resultado);
     }
 
     // ------------------------------------------------------------------
-    // EDITAR NOMBRE
+    // EDITAR NOMBRE Y ROL
     // ------------------------------------------------------------------
     private static async Task<IResult> EditarNombreAsync(
         Guid id,
         EditarUsuarioSolicitud solicitud,
         ClaimsPrincipal admin,
-        UserManager<Usuario> userManager)
+        UserManager<Usuario> userManager,
+        AppDbContext db)
     {
         var adminActual = await userManager.GetUserAsync(admin);
         if (adminActual is null)
             return Results.Unauthorized();
 
-        // Revisión en servidor: evita nombres vacíos, de 1 sola letra o demasiado largos.
         var nombre = solicitud.NombreCompleto?.Trim();
         if (string.IsNullOrWhiteSpace(nombre))
             return Error("El nombre es obligatorio.");
@@ -128,17 +109,47 @@ public static class UsuariosEndpoints
         if (nombre.Length > MaxLongitudNombre)
             return Error($"El nombre no puede pasar de {MaxLongitudNombre} caracteres.");
 
-        // Buscamos por Id Y por la empresa del admin. Si el usuario es de otra
-        // empresa, el resultado es el mismo que si no existiera: "no encontrado".
+        var rol = solicitud.Rol?.Trim() switch
+        {
+            var r when string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase) => "Admin",
+            var r when string.IsNullOrWhiteSpace(r) || string.Equals(r, "Usuario", StringComparison.OrdinalIgnoreCase) => "Usuario",
+            _ => null
+        };
+        if (rol is null)
+            return Error("El rol debe ser Admin o Usuario.");
+
         var usuario = await BuscarEnMiEmpresaAsync(id, adminActual, userManager);
         if (usuario is null)
             return Results.NotFound();
+
+        if (!PuedeGestionarUsuario(adminActual, usuario))
+            return Error("No tienes permiso para modificar este usuario.");
+
+        if (adminActual.CreadoPorId is not null && rol == "Admin")
+            return Error("Solo el administrador principal puede asignar el rol Admin.");
+
+        var rolesActuales = await userManager.GetRolesAsync(usuario);
+        var eraAdmin = rolesActuales.Contains("Admin");
+
+        if (eraAdmin && rol == "Usuario" && usuario.Activo)
+        {
+            var adminsActivos = await ContarAdminsActivosAsync(adminActual.EmpresaId, db);
+            if (adminsActivos <= 1)
+                return Error("No puedes quitarle el rol Admin al único administrador activo de la empresa.");
+        }
 
         usuario.NombreCompleto = nombre;
 
         var resultado = await userManager.UpdateAsync(usuario);
         if (!resultado.Succeeded)
             return ErrorIdentity(resultado);
+
+        if (!rolesActuales.Contains(rol))
+        {
+            if (rolesActuales.Count > 0)
+                await userManager.RemoveFromRolesAsync(usuario, rolesActuales);
+            await userManager.AddToRoleAsync(usuario, rol);
+        }
 
         return Results.NoContent();
     }
@@ -149,28 +160,28 @@ public static class UsuariosEndpoints
     private static Task<IResult> DesactivarAsync(
         Guid id,
         ClaimsPrincipal admin,
-        UserManager<Usuario> userManager)
-        => CambiarActivoAsync(id, activo: false, admin, userManager);
+        UserManager<Usuario> userManager,
+        AppDbContext db)
+        => CambiarActivoAsync(id, activo: false, admin, userManager, db);
 
     private static Task<IResult> ReactivarAsync(
         Guid id,
         ClaimsPrincipal admin,
-        UserManager<Usuario> userManager)
-        => CambiarActivoAsync(id, activo: true, admin, userManager);
+        UserManager<Usuario> userManager,
+        AppDbContext db)
+        => CambiarActivoAsync(id, activo: true, admin, userManager, db);
 
-    // Las dos acciones comparten la misma lógica, así que viven en un solo método.
     private static async Task<IResult> CambiarActivoAsync(
         Guid id,
         bool activo,
         ClaimsPrincipal admin,
-        UserManager<Usuario> userManager)
+        UserManager<Usuario> userManager,
+        AppDbContext db)
     {
         var adminActual = await userManager.GetUserAsync(admin);
         if (adminActual is null)
             return Results.Unauthorized();
 
-        // REGLA: el admin no puede desactivarse a sí mismo. Evita que se quede
-        // fuera de la app por un clic equivocado. Se revisa antes de buscar.
         if (!activo && id == adminActual.Id)
             return Error("No puedes desactivarte a ti mismo.");
 
@@ -178,9 +189,35 @@ public static class UsuariosEndpoints
         if (usuario is null)
             return Results.NotFound();
 
-        // Si ya está en ese estado no hay nada que guardar; respondemos igual de bien.
+        if (!PuedeGestionarUsuario(adminActual, usuario))
+            return Error("No tienes permiso para activar o desactivar este usuario.");
+
         if (usuario.Activo != activo)
         {
+            if (!activo && await userManager.IsInRoleAsync(usuario, "Admin"))
+            {
+                var adminsActivos = await ContarAdminsActivosAsync(adminActual.EmpresaId, db);
+                if (adminsActivos <= 1)
+                    return Error("No puedes desactivar al único administrador activo de la empresa.");
+            }
+
+            if (activo)
+            {
+                var maxUsuarios = await db.Set<NoteWork.Shared.Entidades.Empresa>()
+                    .AsNoTracking()
+                    .Where(e => e.Id == adminActual.EmpresaId)
+                    .Select(e => e.MaxUsuarios)
+                    .FirstOrDefaultAsync();
+
+                if (maxUsuarios <= 0) maxUsuarios = 3;
+
+                var activosActuales = await db.Users
+                    .CountAsync(u => u.EmpresaId == adminActual.EmpresaId && u.Activo);
+
+                if (activosActuales >= maxUsuarios)
+                    return Error($"Has alcanzado el límite de {maxUsuarios} usuarios activos de tu plan.");
+            }
+
             usuario.Activo = activo;
 
             var resultado = await userManager.UpdateAsync(usuario);
@@ -211,10 +248,9 @@ public static class UsuariosEndpoints
         if (usuario is null)
             return Results.NotFound();
 
-        // Identity no deja "asignar" una contraseña directamente: pide un token
-        // de restablecimiento (válido solo en este momento) y luego la cambia.
-        // Así se aplican TODAS las reglas de complejidad de Identity (largo,
-        // mayúscula, número, símbolo) y se renueva el sello de seguridad.
+        if (!PuedeGestionarUsuario(adminActual, usuario))
+            return Error("No tienes permiso para cambiar la contraseña de este usuario.");
+
         var token = await userManager.GeneratePasswordResetTokenAsync(usuario);
         var resultado = await userManager.ResetPasswordAsync(usuario, token, solicitud.NuevaPassword);
 
@@ -227,11 +263,16 @@ public static class UsuariosEndpoints
     // ------------------------------------------------------------------
     // AYUDANTES
     // ------------------------------------------------------------------
+    private static bool PuedeGestionarUsuario(Usuario adminActual, Usuario objetivo)
+        => adminActual.CreadoPorId is null || objetivo.CreadoPorId == adminActual.Id;
 
-    // Busca un usuario por Id SOLO dentro de la empresa del admin que llama.
-    // Es la regla de seguridad central: la empresa sale de la base de datos
-    // (adminActual), nunca de lo que mande el cliente en la solicitud.
-    // Sin AsNoTracking a propósito: después vamos a modificar y guardar.
+    private static Task<int> ContarAdminsActivosAsync(Guid empresaId, AppDbContext db)
+        => (from u in db.Users.AsNoTracking()
+            join ur in db.UserRoles.AsNoTracking() on u.Id equals ur.UserId
+            join r in db.Roles.AsNoTracking() on ur.RoleId equals r.Id
+            where u.EmpresaId == empresaId && u.Activo && r.Name == "Admin"
+            select u.Id).CountAsync();
+
     private static Task<Usuario?> BuscarEnMiEmpresaAsync(
         Guid id,
         Usuario adminActual,
@@ -239,22 +280,12 @@ public static class UsuariosEndpoints
         => userManager.Users
             .FirstOrDefaultAsync(u => u.Id == id && u.EmpresaId == adminActual.EmpresaId);
 
-    // Error 400 con un mensaje legible, en el formato estándar de errores de validación.
     private static IResult Error(string mensaje)
         => Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["error"] = [mensaje]
         });
 
-    // Convierte los errores de Identity en el mismo formato de error 400.
-    // CAMBIO (Bloque B, Prueba 5): antes se enviaba e.Description, que Identity
-    // escribe SIEMPRE en inglés ("Passwords must have at least one digit...").
-    // Ahora cada error pasa por CuentaEndpoints.TraducirErrorIdentity, la misma
-    // traducción que usa "crear usuario", para que la app hable un solo idioma
-    // y no haya dos listas de mensajes que mantener.
-    // Distinct(): si dos errores traducen al mismo texto, se muestra una sola vez.
-    // La clave se queda en "error" para que el Client lo siga mostrando igual
-    // (no hay que tocar ServicioUsuarios ni ListaUsuarios).
     private static IResult ErrorIdentity(IdentityResult resultado)
         => Results.ValidationProblem(new Dictionary<string, string[]>
         {

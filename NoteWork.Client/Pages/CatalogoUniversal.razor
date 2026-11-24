@@ -276,8 +276,9 @@
                         </button>
                     }
                 </div>
-
-                <button type="button" class="btn btn-success btn-sm" @onclick="AbrirNuevoModelo">
+                <button type="button"
+                        class="btn btn-sm @(_mostrarFormModelo && _editandoModeloId is null ? "btn-outline-secondary" : "btn-success")"
+                        @onclick="AbrirNuevoModelo">
                     @(_mostrarFormModelo && _editandoModeloId is null ? "Cancelar" : "+ Nuevo Modelo")
                 </button>
             </div>
@@ -303,11 +304,11 @@
                             </div>
                             <div class="col-5 col-md-3">
                                 <label class="form-label form-label-sm fw-semibold">Código *</label>
-                                <input type="text" class="form-control" @bind="_modCode" maxlength="40" placeholder="Ej: VENT-P65" />
+                                <input type="text" class="form-control" @bind="_modCode" maxlength="40" placeholder="@EjemploModelo.Cod" />
                             </div>
                             <div class="col-7 col-md-5">
                                 <label class="form-label form-label-sm fw-semibold">Nombre *</label>
-                                <input type="text" class="form-control" @bind="_modName" maxlength="120" placeholder="Ej: Ventana Corrediza P-65" />
+                                <input type="text" class="form-control" @bind="_modName" maxlength="120" placeholder="@EjemploModelo.Nom" />
                             </div>
                         </div>
 
@@ -331,17 +332,21 @@
                         </div>
 
                         <div class="row g-2 mb-3 align-items-end">
-                            <div class="col-6 col-md-4">
-                                <label class="form-label form-label-sm fw-semibold">Grosor tablero (pulg. 1/16")</label>
-                                <input type="text" class="form-control" @bind="_modThicknessTexto" placeholder="Ej: 3/4 o 0" />
-                            </div>
+                            @if (UsaTablero)
+                            {
+                                <div class="col-6 col-md-4">
+                                    <label class="form-label form-label-sm fw-semibold">Grosor tablero (pulg. 1/16")</label>
+                                    <input type="text" class="form-control" @bind="_modThicknessTexto" placeholder="Ej: 3/4 o 0" />
+                                </div>
+                            }
                             <div class="col-6 col-md-4">
                                 <label class="form-label form-label-sm fw-semibold">Orden</label>
                                 <input type="number" min="0" max="999" class="form-control" @bind="_modSortOrder" />
                             </div>
                             <div class="col-12 col-md-4">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="chkModActivo" @bind="_modActive" />
+                                <div class="form-check d-flex align-items-center gap-2 mb-2">
+                                    <input class="form-check-input mt-0" style="width:1.1rem;height:1.1rem;flex-shrink:0;"
+                                           type="checkbox" id="chkModActivo" @bind="_modActive" />
                                     <label class="form-check-label fw-semibold" for="chkModActivo">
                                         Modelo activo
                                     </label>
@@ -790,6 +795,19 @@
             : _filtroCategoriaId.HasValue
                 ? _paquete.Models.Where(m => m.CategoryId == _filtroCategoriaId.Value)
                 : _paquete.Models;
+    private string CategoriaSeleccionada =>
+_paquete?.Categories.FirstOrDefault(c => c.Id == _modCategoryId)?.Name ?? "";
+
+    private bool UsaTablero =>
+        !CategoriaSeleccionada.Contains("Ventana", StringComparison.OrdinalIgnoreCase);
+
+    private (string Cod, string Nom) EjemploModelo => CategoriaSeleccionada switch
+    {
+        var s when s.Contains("Puerta", StringComparison.OrdinalIgnoreCase) => ("Ej: PTA-P65", "Ej: Puerta Corrediza P-65"),
+        var s when s.Contains("Gabinete", StringComparison.OrdinalIgnoreCase) => ("Ej: GAB-BAJO", "Ej: Gabinete Bajo Melamina"),
+        var s when s.Contains("Closet", StringComparison.OrdinalIgnoreCase) => ("Ej: CLOSET-MOD", "Ej: Closet Modular Melamina"),
+        _ => ("Ej: VENT-P65", "Ej: Ventana Corrediza P-65")
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -1008,7 +1026,7 @@
         }
 
         int grosorSixteenths = 0;
-        if (!string.IsNullOrWhiteSpace(_modThicknessTexto))
+        if (UsaTablero && !string.IsNullOrWhiteSpace(_modThicknessTexto))
         {
             if (!MeasureFraction.TryParse(_modThicknessTexto, out var grosor) || grosor.Sixteenths < 0)
             {
