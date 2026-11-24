@@ -164,6 +164,28 @@ public class ServicioCatalogoUniversal
             $"/api/catalogo-universal/modelos/{id}",
             "No se pudo eliminar el modelo.");
 
+    public async Task<(bool Exito, string? Error)> DuplicarModeloAsync(Guid id)
+    {
+        UltimoError = null;
+        try
+        {
+            var respuesta = await _http.PostAsync($"/api/catalogo-universal/modelos/{id}/duplicar", null);
+            if (respuesta.IsSuccessStatusCode)
+            {
+                InvalidarCache();
+                return (true, null);
+            }
+
+            UltimoError = await ErroresApi.LeerAsync(respuesta, "No se pudo duplicar el modelo.");
+        }
+        catch (Exception ex)
+        {
+            UltimoError = ErroresApi.DeExcepcion(ex);
+        }
+
+        return (false, UltimoError);
+    }
+
     // =========================================================================
     // REGLAS DE CORTE (Solo Admin)
     // =========================================================================

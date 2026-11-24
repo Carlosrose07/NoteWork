@@ -120,6 +120,16 @@ public class AppDbContext : IdentityDbContext<Usuario, IdentityRole<Guid>, Guid>
             e.Property(p => p.NotaInterna).HasMaxLength(500);
         });
 
+        modelBuilder.Entity<Empresa>(e =>
+        {
+            e.Property(x => x.Nombre).HasMaxLength(150);
+            e.Property(x => x.Subtitulo).HasMaxLength(200);
+            e.Property(x => x.Rnc).HasMaxLength(30);
+            e.Property(x => x.Telefono).HasMaxLength(30);
+            e.Property(x => x.Direccion).HasMaxLength(300);
+            e.Property(x => x.Moneda).HasMaxLength(10);
+        });
+
         // --- CONFIGURACIÓN DE TABLAS DEL MOTOR UNIVERSAL ---
         modelBuilder.Entity<ProductCategory>(e =>
         {

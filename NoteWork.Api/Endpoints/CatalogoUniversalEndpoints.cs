@@ -546,6 +546,111 @@ public static class CatalogoUniversalEndpoints
             entidad.FechaModificacion = DateTime.UtcNow;
             await db.SaveChangesAsync();
             return Results.NoContent();
+
+        });
+
+        grupo.MapPost("/modelos/{id:guid}/duplicar", async (
+            Guid id,
+            AppDbContext db,
+            ClaimsPrincipal user) =>
+        {
+            var ctx = await db.ObtenerContextoAsync(user);
+            if (ctx is null) return Results.Unauthorized();
+            if (!ctx.EsAdmin) return Results.Forbid();
+
+            var origen = await db.ProductModels
+                .AsNoTracking()
+                .VisiblesPara(ctx)
+                .FirstOrDefaultAsync(m => m.Id == id);
+            if (origen is null) return Results.NotFound("Modelo origen no encontrado.");
+
+            var codigosExistentes = await db.ProductModels
+                .AsNoTracking()
+                .VisiblesPara(ctx)
+                .Select(m => m.Code)
+                .ToListAsync();
+
+            var baseCode = origen.Code.Length > 32 ? origen.Code[..32] : origen.Code;
+            var nuevoCode = $"{baseCode}-COPIA";
+            var contador = 2;
+            while (codigosExistentes.Contains(nuevoCode, StringComparer.OrdinalIgnoreCase))
+            {
+                nuevoCode = $"{baseCode}-C{contador++}";
+            }
+
+            var copia = new ProductModel
+            {
+                Id = Guid.NewGuid(),
+                EmpresaId = ctx.EmpresaId,
+                CategoryId = origen.CategoryId,
+                Code = nuevoCode,
+                Name = $"{origen.Name} (Copia)",
+                DefaultBoardThicknessSixteenths = origen.DefaultBoardThicknessSixteenths,
+                DefaultLaborMode = origen.DefaultLaborMode,
+                DefaultLaborValue = origen.DefaultLaborValue,
+                DefaultMarginPercent = origen.DefaultMarginPercent,
+                SortOrder = origen.SortOrder + 1,
+                IsActive = true
+            };
+
+            var cortesOrigen = await db.ProductCutRules
+                .AsNoTracking()
+                .VisiblesPara(ctx)
+                .Where(r => r.ProductModelId == id)
+                .ToListAsync();
+
+            var herrajesOrigen = await db.ProductHardwareRules
+                .AsNoTracking()
+                .VisiblesPara(ctx)
+                .Where(r => r.ProductModelId == id)
+                .ToListAsync();
+
+            db.ProductModels.Add(copia);
+
+            foreach (var c in cortesOrigen)
+            {
+                db.ProductCutRules.Add(new ProductCutRule
+                {
+                    EmpresaId = ctx.EmpresaId,
+                    ProductModelId = copia.Id,
+                    PartName = c.PartName,
+                    MaterialId = c.MaterialId,
+                    MeasureMode = c.MeasureMode,
+                    Dim1Axis = c.Dim1Axis,
+                    Dim1DivisorSource = c.Dim1DivisorSource,
+                    Dim1CustomDivisor = c.Dim1CustomDivisor,
+                    Dim1OffsetSixteenths = c.Dim1OffsetSixteenths,
+                    Dim1ThicknessMultiplier = c.Dim1ThicknessMultiplier,
+                    Dim2Axis = c.Dim2Axis,
+                    Dim2DivisorSource = c.Dim2DivisorSource,
+                    Dim2CustomDivisor = c.Dim2CustomDivisor,
+                    Dim2OffsetSixteenths = c.Dim2OffsetSixteenths,
+                    Dim2ThicknessMultiplier = c.Dim2ThicknessMultiplier,
+                    QuantityMode = c.QuantityMode,
+                    QuantityFactor = c.QuantityFactor,
+                    ConditionJson = c.ConditionJson,
+                    SortOrder = c.SortOrder
+                });
+            }
+
+            foreach (var h in herrajesOrigen)
+            {
+                db.ProductHardwareRules.Add(new ProductHardwareRule
+                {
+                    EmpresaId = ctx.EmpresaId,
+                    ProductModelId = copia.Id,
+                    MaterialId = h.MaterialId,
+                    CalculationBasis = h.CalculationBasis,
+                    Factor = h.Factor,
+                    ConditionJson = h.ConditionJson,
+                    SortOrder = h.SortOrder
+                });
+            }
+
+            await db.SaveChangesAsync();
+
+            return Results.Created($"/api/catalogo-universal/modelos/{copia.Id}",
+                new { copia.Id, copia.Code, copia.Name });
         });
 
         // =====================================================================

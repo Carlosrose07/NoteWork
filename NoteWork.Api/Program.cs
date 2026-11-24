@@ -231,5 +231,6 @@ app.MapNodosEndpoints();
 app.MapPartidasEndpoints();
 app.MapCatalogoUniversalEndpoints();
 app.MapWorkOrdersEndpoints();
+app.MapEmpresaEndpoints();
 
 app.Run();

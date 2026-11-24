@@ -1,6 +1,7 @@
 ﻿@page "/catalogo"
 @using Microsoft.AspNetCore.Authorization
 @using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Entidades.Universal
 @using NoteWork.Shared.Motor
 @using NoteWork.Client.Servicios
 
@@ -14,7 +15,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h2 class="mb-0 text-primary fw-bold">Catálogo Universal</h2>
-            <small class="text-muted">Precios de materiales, mano de obra y márgenes (Solo Admin)</small>
+            <small class="text-muted">Precios de materiales, mano de obra, márgenes y reglas (Solo Admin)</small>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm"
                 @onclick="() => CargarCatalogoAsync(forzar: true)" disabled="@_cargando">
@@ -392,7 +393,17 @@
                                 </small>
                             </div>
 
-                            <div class="d-flex gap-1 text-nowrap">
+                            <div class="d-flex flex-wrap gap-1 justify-content-end text-nowrap">
+                                <button type="button"
+                                        class="btn btn-sm @(_modeloReglasId == mod.Id ? "btn-dark" : "btn-outline-dark")"
+                                        @onclick="() => ToggleReglasModelo(mod.Id)">
+                                    @(_modeloReglasId == mod.Id ? "Ocultar reglas" : "Reglas")
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => DuplicarModeloAsync(mod)"
+                                        disabled="@_guardando">
+                                    Duplicar
+                                </button>
                                 <button type="button" class="btn btn-sm btn-outline-primary"
                                         @onclick="() => EditarModelo(mod)">
                                     Editar
@@ -417,6 +428,258 @@
                                 }
                             </div>
                         </div>
+
+                        @* ============================================================= *@
+                        @* PANEL DESPLEGABLE DE REGLAS DE CORTE Y HERRAJES               *@
+                        @* ============================================================= *@
+                        @if (_modeloReglasId == mod.Id)
+                        {
+                            <div class="mt-3 pt-3 border-top">
+                                @* --- REGLAS DE CORTE --- *@
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0 fw-bold text-dark">Reglas de Corte (@mod.CutRules.Count)</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-success"
+                                            @onclick="() => AbrirNuevaReglaCorte(mod)">
+                                        @(_mostrarFormCorte && _editandoCorteId is null ? "Cancelar" : "+ Agregar pieza")
+                                    </button>
+                                </div>
+
+                                @if (_mostrarFormCorte)
+                                {
+                                    <div class="p-3 rounded bg-light border mb-3">
+                                        <div class="fw-semibold small text-success mb-2">
+                                            @(_editandoCorteId.HasValue ? "Editar regla de corte" : "Nueva regla de corte")
+                                        </div>
+
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label form-label-sm fw-semibold">Nombre pieza *</label>
+                                                <input type="text" class="form-control form-control-sm"
+                                                       @bind="_cortePartName" placeholder="Ej: Cristal 1/4&quot;, Cabezal" maxlength="100" />
+                                            </div>
+                                            <div class="col-12 col-md-5">
+                                                <label class="form-label form-label-sm fw-semibold">Material *</label>
+                                                <select class="form-select form-select-sm" @bind="_corteMaterialId">
+                                                    @foreach (var m in _paquete.Materials)
+                                                    {
+                                                        <option value="@m.Id">@m.Name (@m.Code)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-12 col-md-3">
+                                                <label class="form-label form-label-sm fw-semibold">Tipo medida</label>
+                                                <select class="form-select form-select-sm" @bind="_corteMeasureMode">
+                                                    @foreach (var modo in Enum.GetValues<MeasureMode>())
+                                                    {
+                                                        <option value="@modo">@EtiquetaModoMedida(modo)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-4">
+                                                <label class="form-label form-label-sm fw-semibold">Medida 1 (Eje)</label>
+                                                <select class="form-select form-select-sm" @bind="_corteDim1Axis">
+                                                    @foreach (var eje in Enum.GetValues<DimensionAxis>())
+                                                    {
+                                                        <option value="@eje">@EtiquetaEje(eje)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="form-label form-label-sm fw-semibold">Dividir entre</label>
+                                                <select class="form-select form-select-sm" @bind="_corteDim1Div">
+                                                    @foreach (var div in Enum.GetValues<DivisorSource>())
+                                                    {
+                                                        <option value="@div">@EtiquetaDivisor(div)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="form-label form-label-sm fw-semibold">Ajuste (1/16")</label>
+                                                <input type="text" class="form-control form-control-sm"
+                                                       @bind="_corteDim1OffsetTexto" placeholder="Ej: -1 1/2 o 0" />
+                                            </div>
+                                        </div>
+
+                                        @if (_corteMeasureMode != MeasureMode.Length1D)
+                                        {
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-4">
+                                                    <label class="form-label form-label-sm fw-semibold">Medida 2 (Eje)</label>
+                                                    <select class="form-select form-select-sm" @bind="_corteDim2Axis">
+                                                        @foreach (var eje in Enum.GetValues<DimensionAxis>())
+                                                        {
+                                                            <option value="@eje">@EtiquetaEje(eje)</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div class="col-4">
+                                                    <label class="form-label form-label-sm fw-semibold">Dividir entre</label>
+                                                    <select class="form-select form-select-sm" @bind="_corteDim2Div">
+                                                        @foreach (var div in Enum.GetValues<DivisorSource>())
+                                                        {
+                                                            <option value="@div">@EtiquetaDivisor(div)</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div class="col-4">
+                                                    <label class="form-label form-label-sm fw-semibold">Ajuste (1/16")</label>
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           @bind="_corteDim2OffsetTexto" placeholder="Ej: -2 1/2 o 0" />
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-6 col-md-4">
+                                                <label class="form-label form-label-sm fw-semibold">Cantidad según</label>
+                                                <select class="form-select form-select-sm" @bind="_corteQtyMode">
+                                                    @foreach (var qm in Enum.GetValues<QuantityMode>())
+                                                    {
+                                                        <option value="@qm">@EtiquetaModoCantidad(qm)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label form-label-sm fw-semibold">Factor cant.</label>
+                                                <input type="number" min="1" max="100" class="form-control form-control-sm"
+                                                       @bind="_corteQtyFactor" />
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="CerrarFormCorte" disabled="@_guardando">
+                                                Cancelar
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-success"
+                                                    @onclick="() => GuardarReglaCorteAsync(mod.Id)" disabled="@_guardando">
+                                                @(_guardando ? "Guardando..." : "Guardar pieza")
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (mod.CutRules.Count == 0)
+                                {
+                                    <p class="small text-muted mb-3">Sin reglas de corte configuradas.</p>
+                                }
+                                else
+                                {
+                                    <div class="list-group list-group-flush border rounded mb-3">
+                                        @foreach (var r in mod.CutRules)
+                                        {
+                                            <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center gap-2">
+                                                <div style="min-width: 0;">
+                                                    <div class="fw-semibold small">@r.PartName</div>
+                                                    <div class="small text-muted">
+                                                        @NombreMaterial(r.MaterialId) · @ResumenReglaCorte(r)
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-1 text-nowrap">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                            @onclick="() => EditarReglaCorte(r)">
+                                                        Editar
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                            @onclick="() => BorrarReglaCorteAsync(r.Id)" disabled="@_guardando">
+                                                        X
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @* --- REGLAS DE HERRAJES --- *@
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0 fw-bold text-dark">Herrajes y Consumibles (@mod.HardwareRules.Count)</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-success"
+                                            @onclick="() => AbrirNuevaReglaHerraje(mod)">
+                                        @(_mostrarFormHerraje && _editandoHerrajeId is null ? "Cancelar" : "+ Agregar herraje")
+                                    </button>
+                                </div>
+
+                                @if (_mostrarFormHerraje)
+                                {
+                                    <div class="p-3 rounded bg-light border mb-3">
+                                        <div class="fw-semibold small text-success mb-2">
+                                            @(_editandoHerrajeId.HasValue ? "Editar herraje" : "Nuevo herraje / consumible")
+                                        </div>
+
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-12 col-md-5">
+                                                <label class="form-label form-label-sm fw-semibold">Material / Herraje *</label>
+                                                <select class="form-select form-select-sm" @bind="_herrMaterialId">
+                                                    @foreach (var m in _paquete.Materials)
+                                                    {
+                                                        <option value="@m.Id">@m.Name (@m.Code)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-7 col-md-4">
+                                                <label class="form-label form-label-sm fw-semibold">Se calcula</label>
+                                                <select class="form-select form-select-sm" @bind="_herrBasis">
+                                                    @foreach (var b in Enum.GetValues<HardwareCalculationBasis>())
+                                                    {
+                                                        <option value="@b">@EtiquetaBaseHerraje(b)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-5 col-md-3">
+                                                <label class="form-label form-label-sm fw-semibold">Cantidad *</label>
+                                                <input type="number" step="0.01" min="0.01" class="form-control form-control-sm"
+                                                       @bind="_herrFactor" />
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="CerrarFormHerraje" disabled="@_guardando">
+                                                Cancelar
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-success"
+                                                    @onclick="() => GuardarReglaHerrajeAsync(mod.Id)" disabled="@_guardando">
+                                                @(_guardando ? "Guardando..." : "Guardar herraje")
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (mod.HardwareRules.Count == 0)
+                                {
+                                    <p class="small text-muted mb-0">Sin herrajes configurados.</p>
+                                }
+                                else
+                                {
+                                    <div class="list-group list-group-flush border rounded">
+                                        @foreach (var h in mod.HardwareRules)
+                                        {
+                                            <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center gap-2">
+                                                <div style="min-width: 0;">
+                                                    <div class="fw-semibold small">@NombreMaterial(h.MaterialId)</div>
+                                                    <div class="small text-muted">
+                                                        @h.Factor.ToString("0.##") × @EtiquetaBaseHerraje(h.CalculationBasis)
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-1 text-nowrap">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                            @onclick="() => EditarReglaHerraje(h)">
+                                                        Editar
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                            @onclick="() => BorrarReglaHerrajeAsync(h.Id)" disabled="@_guardando">
+                                                        X
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -467,6 +730,37 @@
     private string _modThicknessTexto = "0";
     private int _modSortOrder;
     private bool _modActive = true;
+
+    // Panel visual de Reglas (Corte y Herrajes)
+    private Guid? _modeloReglasId;
+
+    private bool _mostrarFormCorte;
+    private Guid? _editandoCorteId;
+    private string _cortePartName = "";
+    private Guid _corteMaterialId;
+    private MeasureMode _corteMeasureMode = MeasureMode.Length1D;
+    private DimensionAxis _corteDim1Axis = DimensionAxis.Width;
+    private DivisorSource _corteDim1Div = DivisorSource.ConstantOne;
+    private string _corteDim1OffsetTexto = "0";
+    private decimal _corteDim1CustomDiv = 1m;
+    private int _corteDim1ThickMult;
+    private DimensionAxis _corteDim2Axis = DimensionAxis.Height;
+    private DivisorSource _corteDim2Div = DivisorSource.ConstantOne;
+    private string _corteDim2OffsetTexto = "0";
+    private decimal _corteDim2CustomDiv = 1m;
+    private int _corteDim2ThickMult;
+    private QuantityMode _corteQtyMode = QuantityMode.Fixed;
+    private int _corteQtyFactor = 1;
+    private RuleCondition? _corteCondition;
+    private int _corteSortOrder = 1;
+
+    private bool _mostrarFormHerraje;
+    private Guid? _editandoHerrajeId;
+    private Guid _herrMaterialId;
+    private HardwareCalculationBasis _herrBasis = HardwareCalculationBasis.PerUnit;
+    private decimal _herrFactor = 1m;
+    private RuleCondition? _herrCondition;
+    private int _herrSortOrder = 1;
 
     private IEnumerable<MaterialCatalogDto> MaterialesFiltrados
     {
@@ -776,13 +1070,409 @@
             return;
         }
 
+        if (_modeloReglasId == id) _modeloReglasId = null;
         _mensajeOk = "Modelo eliminado.";
         await CargarCatalogoAsync(forzar: true);
     }
 
+    private async Task DuplicarModeloAsync(ProductModelDto mod)
+    {
+        _guardando = true;
+        _error = null;
+        _mensajeOk = null;
+
+        var (exito, error) = await ServicioCatalogo.DuplicarModeloAsync(mod.Id);
+        _guardando = false;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo duplicar el modelo.";
+            return;
+        }
+
+        _mensajeOk = $"Modelo '{mod.Name}' duplicado con todas sus reglas.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
     // =========================================================================
-    // HELPERS VISUALES
+    // CRUD REGLAS DE CORTE Y HERRAJES
     // =========================================================================
+
+    private void ToggleReglasModelo(Guid modeloId)
+    {
+        if (_modeloReglasId == modeloId)
+        {
+            _modeloReglasId = null;
+            CerrarFormCorte();
+            CerrarFormHerraje();
+            return;
+        }
+
+        _modeloReglasId = modeloId;
+        CerrarFormCorte();
+        CerrarFormHerraje();
+    }
+
+    private void AbrirNuevaReglaCorte(ProductModelDto mod)
+    {
+        if (_mostrarFormCorte && _editandoCorteId is null)
+        {
+            CerrarFormCorte();
+            return;
+        }
+
+        _editandoCorteId = null;
+        _error = null;
+        _mensajeOk = null;
+
+        _cortePartName = "";
+        _corteMaterialId = _paquete?.Materials.FirstOrDefault()?.Id ?? Guid.Empty;
+        _corteMeasureMode = MeasureMode.Length1D;
+        _corteDim1Axis = DimensionAxis.Width;
+        _corteDim1Div = DivisorSource.ConstantOne;
+        _corteDim1OffsetTexto = "0";
+        _corteDim1CustomDiv = 1m;
+        _corteDim1ThickMult = 0;
+        _corteDim2Axis = DimensionAxis.Height;
+        _corteDim2Div = DivisorSource.ConstantOne;
+        _corteDim2OffsetTexto = "0";
+        _corteDim2CustomDiv = 1m;
+        _corteDim2ThickMult = 0;
+        _corteQtyMode = QuantityMode.Fixed;
+        _corteQtyFactor = 1;
+        _corteCondition = null;
+        _corteSortOrder = mod.CutRules.Count + 1;
+
+        _mostrarFormCorte = true;
+    }
+
+    private void EditarReglaCorte(CutRuleDto r)
+    {
+        _editandoCorteId = r.Id;
+        _error = null;
+        _mensajeOk = null;
+
+        _cortePartName = r.PartName;
+        _corteMaterialId = r.MaterialId;
+        _corteMeasureMode = r.MeasureMode;
+        _corteDim1Axis = r.Dim1Axis;
+        _corteDim1Div = r.Dim1DivisorSource;
+        _corteDim1OffsetTexto = FormatearAjusteConSigno(r.Dim1OffsetSixteenths);
+        _corteDim1CustomDiv = r.Dim1CustomDivisor;
+        _corteDim1ThickMult = r.Dim1ThicknessMultiplier;
+        _corteDim2Axis = r.Dim2Axis;
+        _corteDim2Div = r.Dim2DivisorSource;
+        _corteDim2OffsetTexto = FormatearAjusteConSigno(r.Dim2OffsetSixteenths);
+        _corteDim2CustomDiv = r.Dim2CustomDivisor;
+        _corteDim2ThickMult = r.Dim2ThicknessMultiplier;
+        _corteQtyMode = r.QuantityMode;
+        _corteQtyFactor = r.QuantityFactor;
+        _corteCondition = r.Condition;
+        _corteSortOrder = r.SortOrder;
+
+        _mostrarFormCorte = true;
+    }
+
+    private void CerrarFormCorte()
+    {
+        _mostrarFormCorte = false;
+        _editandoCorteId = null;
+    }
+
+    private async Task GuardarReglaCorteAsync(Guid modeloId)
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (string.IsNullOrWhiteSpace(_cortePartName))
+        {
+            _error = "Escribe el nombre de la pieza (ej: Cristal 1/4\" o Cabezal).";
+            return;
+        }
+        if (_corteMaterialId == Guid.Empty)
+        {
+            _error = "Selecciona un material para la pieza.";
+            return;
+        }
+        if (!IntentarParsearAjusteConSigno(_corteDim1OffsetTexto, out var offset1))
+        {
+            _error = "Ajuste de Medida 1 inválido (ej: -1 1/2, 3/4 o 0).";
+            return;
+        }
+
+        int offset2 = 0;
+        if (_corteMeasureMode != MeasureMode.Length1D &&
+            !IntentarParsearAjusteConSigno(_corteDim2OffsetTexto, out offset2))
+        {
+            _error = "Ajuste de Medida 2 inválido (ej: -2 1/2, 1/4 o 0).";
+            return;
+        }
+
+        var dto = new GuardarCutRuleDto(
+            PartName: _cortePartName.Trim(),
+            MaterialId: _corteMaterialId,
+            MeasureMode: _corteMeasureMode,
+            Dim1Axis: _corteDim1Axis,
+            Dim1DivisorSource: _corteDim1Div,
+            Dim1CustomDivisor: _corteDim1CustomDiv <= 0 ? 1m : _corteDim1CustomDiv,
+            Dim1OffsetSixteenths: offset1,
+            Dim1ThicknessMultiplier: _corteDim1ThickMult,
+            Dim2Axis: _corteMeasureMode == MeasureMode.Length1D ? DimensionAxis.None : _corteDim2Axis,
+            Dim2DivisorSource: _corteMeasureMode == MeasureMode.Length1D ? DivisorSource.ConstantOne : _corteDim2Div,
+            Dim2CustomDivisor: _corteDim2CustomDiv <= 0 ? 1m : _corteDim2CustomDiv,
+            Dim2OffsetSixteenths: _corteMeasureMode == MeasureMode.Length1D ? 0 : offset2,
+            Dim2ThicknessMultiplier: _corteMeasureMode == MeasureMode.Length1D ? 0 : _corteDim2ThickMult,
+            QuantityMode: _corteQtyMode,
+            QuantityFactor: Math.Max(1, _corteQtyFactor),
+            Condition: _corteCondition,
+            SortOrder: _corteSortOrder);
+
+        _guardando = true;
+        string? error;
+
+        if (_editandoCorteId.HasValue)
+        {
+            (_, error) = await ServicioCatalogo.EditarReglaCorteAsync(_editandoCorteId.Value, dto);
+        }
+        else
+        {
+            (_, error) = await ServicioCatalogo.CrearReglaCorteAsync(modeloId, dto);
+        }
+
+        _guardando = false;
+
+        if (error is not null)
+        {
+            _error = error;
+            return;
+        }
+
+        CerrarFormCorte();
+        _mensajeOk = "Regla de corte guardada.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    private async Task BorrarReglaCorteAsync(Guid reglaId)
+    {
+        _guardando = true;
+        _error = null;
+        _mensajeOk = null;
+
+        var (exito, error) = await ServicioCatalogo.BorrarReglaCorteAsync(reglaId);
+        _guardando = false;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar la regla de corte.";
+            return;
+        }
+
+        _mensajeOk = "Regla de corte eliminada.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    private void AbrirNuevaReglaHerraje(ProductModelDto mod)
+    {
+        if (_mostrarFormHerraje && _editandoHerrajeId is null)
+        {
+            CerrarFormHerraje();
+            return;
+        }
+
+        _editandoHerrajeId = null;
+        _error = null;
+        _mensajeOk = null;
+
+        _herrMaterialId = _paquete?.Materials.FirstOrDefault(m => m.MaterialType == MaterialType.Unit)?.Id
+            ?? _paquete?.Materials.FirstOrDefault()?.Id
+            ?? Guid.Empty;
+        _herrBasis = HardwareCalculationBasis.PerUnit;
+        _herrFactor = 1m;
+        _herrCondition = null;
+        _herrSortOrder = mod.HardwareRules.Count + 1;
+
+        _mostrarFormHerraje = true;
+    }
+
+    private void EditarReglaHerraje(HardwareRuleDto h)
+    {
+        _editandoHerrajeId = h.Id;
+        _error = null;
+        _mensajeOk = null;
+
+        _herrMaterialId = h.MaterialId;
+        _herrBasis = h.CalculationBasis;
+        _herrFactor = h.Factor;
+        _herrCondition = h.Condition;
+        _herrSortOrder = h.SortOrder;
+
+        _mostrarFormHerraje = true;
+    }
+
+    private void CerrarFormHerraje()
+    {
+        _mostrarFormHerraje = false;
+        _editandoHerrajeId = null;
+    }
+
+    private async Task GuardarReglaHerrajeAsync(Guid modeloId)
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (_herrMaterialId == Guid.Empty)
+        {
+            _error = "Selecciona un herraje o material.";
+            return;
+        }
+        if (_herrFactor <= 0)
+        {
+            _error = "La cantidad debe ser mayor que cero.";
+            return;
+        }
+
+        var dto = new GuardarHardwareRuleDto(
+            MaterialId: _herrMaterialId,
+            CalculationBasis: _herrBasis,
+            Factor: _herrFactor,
+            Condition: _herrCondition,
+            SortOrder: _herrSortOrder);
+
+        _guardando = true;
+        string? error;
+
+        if (_editandoHerrajeId.HasValue)
+        {
+            (_, error) = await ServicioCatalogo.EditarReglaHerrajeAsync(_editandoHerrajeId.Value, dto);
+        }
+        else
+        {
+            (_, error) = await ServicioCatalogo.CrearReglaHerrajeAsync(modeloId, dto);
+        }
+
+        _guardando = false;
+
+        if (error is not null)
+        {
+            _error = error;
+            return;
+        }
+
+        CerrarFormHerraje();
+        _mensajeOk = "Regla de herraje guardada.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    private async Task BorrarReglaHerrajeAsync(Guid reglaId)
+    {
+        _guardando = true;
+        _error = null;
+        _mensajeOk = null;
+
+        var (exito, error) = await ServicioCatalogo.BorrarReglaHerrajeAsync(reglaId);
+        _guardando = false;
+
+        if (!exito)
+        {
+            _error = error ?? "No se pudo eliminar la regla de herraje.";
+            return;
+        }
+
+        _mensajeOk = "Regla de herraje eliminada.";
+        await CargarCatalogoAsync(forzar: true);
+    }
+
+    // =========================================================================
+    // HELPERS VISUALES Y FRACCIONES CON SIGNO
+    // =========================================================================
+
+    private string NombreMaterial(Guid materialId) =>
+        _paquete?.Materials.FirstOrDefault(m => m.Id == materialId)?.Name ?? "Material";
+
+    private static string FormatearAjusteConSigno(int sixteenths)
+    {
+        if (sixteenths == 0) return "0";
+        var signo = sixteenths < 0 ? "-" : "";
+        var texto = new MeasureFraction(Math.Abs(sixteenths)).ToString().Replace("\"", "");
+        return $"{signo}{texto}";
+    }
+
+    private static bool IntentarParsearAjusteConSigno(string? texto, out int sixteenths)
+    {
+        sixteenths = 0;
+        if (string.IsNullOrWhiteSpace(texto)) return true;
+
+        var limpio = texto.Trim();
+        var negativo = limpio.StartsWith('-');
+        if (negativo || limpio.StartsWith('+'))
+            limpio = limpio[1..].Trim();
+
+        if (!MeasureFraction.TryParse(limpio, out var frac))
+            return false;
+
+        sixteenths = negativo ? -frac.Sixteenths : frac.Sixteenths;
+        return true;
+    }
+
+    private static string ResumenReglaCorte(CutRuleDto r)
+    {
+        var d1 = $"{EtiquetaEje(r.Dim1Axis)}";
+        if (r.Dim1DivisorSource != DivisorSource.ConstantOne) d1 += $" ÷ {EtiquetaDivisor(r.Dim1DivisorSource)}";
+        if (r.Dim1OffsetSixteenths != 0) d1 += $" ({FormatearAjusteConSigno(r.Dim1OffsetSixteenths)}\")";
+
+        if (r.MeasureMode == MeasureMode.Length1D)
+            return $"{d1} · Cant: {r.QuantityFactor} ({EtiquetaModoCantidad(r.QuantityMode)})";
+
+        var d2 = $"{EtiquetaEje(r.Dim2Axis)}";
+        if (r.Dim2DivisorSource != DivisorSource.ConstantOne) d2 += $" ÷ {EtiquetaDivisor(r.Dim2DivisorSource)}";
+        if (r.Dim2OffsetSixteenths != 0) d2 += $" ({FormatearAjusteConSigno(r.Dim2OffsetSixteenths)}\")";
+
+        return $"{d1} × {d2} · Cant: {r.QuantityFactor} ({EtiquetaModoCantidad(r.QuantityMode)})";
+    }
+
+    private static string EtiquetaModoMedida(MeasureMode m) => m switch
+    {
+        MeasureMode.Length1D => "Lineal 1D (Perfil/Barra)",
+        MeasureMode.Rect2D => "Superficie 2D (Cristal/Plancha)",
+        MeasureMode.Perimeter1D => "Perímetro 1D (Tapacanto/Goma)",
+        _ => m.ToString()
+    };
+
+    private static string EtiquetaEje(DimensionAxis a) => a switch
+    {
+        DimensionAxis.Width => "Ancho",
+        DimensionAxis.Height => "Alto",
+        DimensionAxis.Depth => "Profundidad",
+        DimensionAxis.None => "Fijo (sin eje)",
+        _ => a.ToString()
+    };
+
+    private static string EtiquetaDivisor(DivisorSource d) => d switch
+    {
+        DivisorSource.ConstantOne => "1 (completo)",
+        DivisorSource.LeafCount => "Hojas",
+        DivisorSource.DoorCount => "Puertas",
+        _ => d.ToString()
+    };
+
+    private static string EtiquetaModoCantidad(QuantityMode q) => q switch
+    {
+        QuantityMode.Fixed => "Fijo por unidad",
+        QuantityMode.PerLeaf => "Por cada hoja",
+        QuantityMode.PerDoor => "Por cada puerta",
+        QuantityMode.PerShelf => "Por cada repisa",
+        _ => q.ToString()
+    };
+
+    private static string EtiquetaBaseHerraje(HardwareCalculationBasis b) => b switch
+    {
+        HardwareCalculationBasis.PerUnit => "Por unidad",
+        HardwareCalculationBasis.PerLeaf => "Por hoja",
+        HardwareCalculationBasis.PerDoor => "Por puerta",
+        HardwareCalculationBasis.PerDrawer => "Por gaveta",
+        HardwareCalculationBasis.PerimeterFeet => "Por pie de perímetro",
+        _ => b.ToString()
+    };
 
     private static string EtiquetaTipoMaterial(MaterialType tipo) => tipo switch
     {

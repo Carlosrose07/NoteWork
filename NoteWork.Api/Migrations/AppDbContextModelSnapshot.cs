@@ -284,7 +284,8 @@ namespace NoteWork.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Direccion")
-                        .HasColumnType("text");
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.Property<bool>("Eliminado")
                         .HasColumnType("boolean");
@@ -303,14 +304,25 @@ namespace NoteWork.Api.Migrations
 
                     b.Property<string>("Moneda")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("Rnc")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Subtitulo")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Telefono")
-                        .HasColumnType("text");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<int>("UnidadPorDefecto")
                         .HasColumnType("integer");

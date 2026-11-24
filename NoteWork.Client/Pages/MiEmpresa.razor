@@ -1,0 +1,295 @@
+﻿@page "/empresa"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using NoteWork.Shared.Dtos
+@using NoteWork.Shared.Entidades
+@using NoteWork.Client.Servicios
+
+@attribute [Authorize]
+
+@inject ServicioEmpresa ServicioEmpresa
+
+<PageTitle>Mi Empresa - NoteWork</PageTitle>
+
+<div class="container mt-3 mb-5" style="max-width: 780px;">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h3 class="fw-bold mb-0">Configuración de Empresa</h3>
+            <small class="text-muted">Estos datos aparecen en el encabezado de tus presupuestos A4.</small>
+        </div>
+        <a href="/ordenes" class="btn btn-outline-secondary btn-sm">&larr; Volver a Órdenes</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center" role="alert">
+            <span>@_error</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_mensajeOk))
+    {
+        <div class="alert alert-success py-2 d-flex justify-content-between align-items-center" role="alert">
+            <span>@_mensajeOk</span>
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="() => _mensajeOk = null"></button>
+        </div>
+    }
+
+    @if (_cargando)
+    {
+        <div class="text-center my-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Cargando datos de la empresa...</p>
+        </div>
+    }
+    else
+    {
+        @* Vista previa en vivo del encabezado A4 *@
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-light small fw-semibold text-muted">
+                Vista previa del encabezado en el Presupuesto A4
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-2 border-bottom border-2 border-dark">
+                    <div class="d-flex align-items-center gap-3">
+                        @if (!string.IsNullOrWhiteSpace(_logoRuta))
+                        {
+                            <img src="@_logoRuta" alt="Logo" style="max-height: 64px; max-width: 150px; object-fit: contain;" />
+                        }
+                        <div>
+                            <h4 class="fw-bold text-dark mb-0">
+                                @(string.IsNullOrWhiteSpace(_nombre) ? "Nombre de tu Taller" : _nombre)
+                            </h4>
+                            @if (!string.IsNullOrWhiteSpace(_subtitulo))
+                            {
+                                <div class="small text-muted">@_subtitulo</div>
+                            }
+                            <div class="small text-muted">
+                                @if (!string.IsNullOrWhiteSpace(_rnc))
+                                {
+                                    <span>RNC: @_rnc</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_rnc) && !string.IsNullOrWhiteSpace(_telefono))
+                                {
+                                    <span> · </span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_telefono))
+                                {
+                                    <span>Tel: @_telefono</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_direccion))
+                            {
+                                <div class="small text-muted">@_direccion</div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <div class="text-uppercase fw-bold text-primary">COTIZACIÓN / PRESUPUESTO</div>
+                        <small class="text-muted">No. NW-2026-0001</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-12 col-md-7">
+                                <label class="form-label form-label-sm fw-semibold">Nombre de la Empresa / Taller *</label>
+                                <input type="text" class="form-control" maxlength="150"
+                                       placeholder="Ej: Taller de Aluminio y Ebanistería Flores"
+                                       @bind="_nombre" @bind:event="oninput" />
+                            </div>
+
+                            <div class="col-12 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">RNC (opcional)</label>
+                                <input type="text" class="form-control" maxlength="30"
+                                       placeholder="Ej: 131-12345-6"
+                                       @bind="_rnc" @bind:event="oninput" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label form-label-sm fw-semibold">Subtítulo / Actividad (opcional)</label>
+                                <input type="text" class="form-control" maxlength="200"
+                                       placeholder="Ej: Puertas, Ventanas, Gabinetes y Closets a Medida"
+                                       @bind="_subtitulo" @bind:event="oninput" />
+                            </div>
+
+                            <div class="col-12 col-md-5">
+                                <label class="form-label form-label-sm fw-semibold">Teléfono / WhatsApp</label>
+                                <input type="tel" class="form-control" maxlength="30"
+                                       placeholder="Ej: 809-555-0101"
+                                       @bind="_telefono" @bind:event="oninput" />
+                            </div>
+
+                            <div class="col-12 col-md-7">
+                                <label class="form-label form-label-sm fw-semibold">Dirección</label>
+                                <input type="text" class="form-control" maxlength="300"
+                                       placeholder="Ej: Av. Libertad #45, San Francisco de Macorís"
+                                       @bind="_direccion" @bind:event="oninput" />
+                            </div>
+
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Moneda</label>
+                                <select class="form-select" @bind="_moneda">
+                                    <option value="DOP">DOP (RD$)</option>
+                                    <option value="USD">USD (US$)</option>
+                                </select>
+                            </div>
+
+                            <div class="col-6 col-md-4">
+                                <label class="form-label form-label-sm fw-semibold">Unidad por defecto</label>
+                                <select class="form-select" @bind="_unidadPorDefecto">
+                                    @foreach (var unidad in Enum.GetValues<UnidadMedida>())
+                                    {
+                                        <option value="@unidad">@unidad</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label form-label-sm fw-semibold">Logo de la Empresa (opcional)</label>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <InputFile class="form-control form-control-sm" style="max-width: 340px;"
+                                               accept="image/png,image/jpeg,image/webp"
+                                               OnChange="AlSeleccionarLogoAsync" />
+
+                                    @if (!string.IsNullOrWhiteSpace(_logoRuta))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => _logoRuta = null">
+                                            Quitar logo
+                                        </button>
+                                    }
+                                </div>
+                                <small class="text-muted d-block mt-1">
+                                    Se optimiza automáticamente para que cargue rápido en celulares e impresión A4.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end mt-4">
+                            <button type="button" class="btn btn-primary"
+                                    @onclick="GuardarAsync" disabled="@_guardando">
+                                @(_guardando ? "Guardando..." : "Guardar datos de empresa")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="alert alert-info">
+                    Solo el administrador de la empresa puede modificar estos datos.
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    }
+</div>
+
+@code {
+    private bool _cargando = true;
+    private bool _guardando;
+    private string? _error;
+    private string? _mensajeOk;
+
+    private string _nombre = "";
+    private string? _subtitulo;
+    private string? _rnc;
+    private string? _logoRuta;
+    private string? _telefono;
+    private string? _direccion;
+    private string _moneda = "DOP";
+    private UnidadMedida _unidadPorDefecto = UnidadMedida.Pulgadas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var empresa = await ServicioEmpresa.ObtenerAsync();
+        if (empresa is null)
+        {
+            _error = ServicioEmpresa.UltimoError ?? "No se pudo cargar la empresa.";
+        }
+        else
+        {
+            _nombre = empresa.Nombre;
+            _subtitulo = empresa.Subtitulo;
+            _rnc = empresa.Rnc;
+            _logoRuta = empresa.LogoRuta;
+            _telefono = empresa.Telefono;
+            _direccion = empresa.Direccion;
+            _moneda = empresa.Moneda;
+            _unidadPorDefecto = empresa.UnidadPorDefecto;
+        }
+
+        _cargando = false;
+    }
+
+    private async Task AlSeleccionarLogoAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var archivo = e.File;
+        if (archivo is null) return;
+
+        if (archivo.Size > 5 * 1024 * 1024)
+        {
+            _error = "La imagen es muy pesada (máximo 5 MB).";
+            return;
+        }
+
+        try
+        {
+            var redimensionada = await archivo.RequestImageFileAsync("image/png", 260, 120);
+            await using var stream = redimensionada.OpenReadStream(maxAllowedSize: 512 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            _logoRuta = $"data:image/png;base64,{base64}";
+        }
+        catch
+        {
+            _error = "No se pudo procesar la imagen seleccionada. Prueba con otro PNG o JPG.";
+        }
+    }
+
+    private async Task GuardarAsync()
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (string.IsNullOrWhiteSpace(_nombre))
+        {
+            _error = "El nombre de la empresa es obligatorio.";
+            return;
+        }
+
+        _guardando = true;
+
+        var dto = new GuardarEmpresaDto(
+            Nombre: _nombre.Trim(),
+            Subtitulo: _subtitulo,
+            Rnc: _rnc,
+            LogoRuta: _logoRuta,
+            Telefono: _telefono,
+            Direccion: _direccion,
+            Moneda: _moneda,
+            UnidadPorDefecto: _unidadPorDefecto);
+
+        var (actualizada, error) = await ServicioEmpresa.GuardarAsync(dto);
+        _guardando = false;
+
+        if (actualizada is null)
+        {
+            _error = error ?? "No se pudieron guardar los cambios.";
+            return;
+        }
+
+        _mensajeOk = "Datos de la empresa guardados correctamente.";
+    }
+}

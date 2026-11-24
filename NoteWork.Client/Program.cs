@@ -43,6 +43,7 @@ builder.Services.AddScoped<ServicioNodos>();
 builder.Services.AddScoped<ServicioPartidas>();
 builder.Services.AddScoped<ServicioCatalogoUniversal>();
 builder.Services.AddScoped<ServicioOrdenes>();
+builder.Services.AddScoped<ServicioEmpresa>();
 
 // --- AUTENTICACIÓN DE PÁGINAS (4.16) ---
 // AddAuthorizationCore activa [Authorize] en su versión liviana para WASM.

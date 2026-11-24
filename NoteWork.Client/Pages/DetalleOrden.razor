@@ -10,6 +10,7 @@
 
 @inject ServicioOrdenes ServicioOrdenes
 @inject ServicioCatalogoUniversal ServicioCatalogo
+@inject ServicioEmpresa ServicioEmpresa
 @inject IJSRuntime JS
 
 <PageTitle>@(_orden is null ? "Orden - NoteWork" : $"{_orden.OrderNumber} - NoteWork")</PageTitle>
@@ -554,7 +555,27 @@
         @* ===================================================================== *@
         else if (_pestana == PestanaVista.Compras)
         {
-            <h5 class="fw-bold mb-3">Consolidado de Compras — @_orden.OrderNumber</h5>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0">Consolidado de Compras — @_orden.OrderNumber</h5>
+                    <small class="text-muted">
+                        Modo: <strong>@(_comprarCompletas ? "Piezas completas (Ferretería)" : "Con pedazos / retazos (Neto)")</strong>
+                    </small>
+                </div>
+
+                <div class="btn-group btn-group-sm d-print-none" role="group" aria-label="Modo de compra">
+                    <button type="button"
+                            class="btn @(_comprarCompletas ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => _comprarCompletas = true">
+                        Completas (Ferretería)
+                    </button>
+                    <button type="button"
+                            class="btn @(!_comprarCompletas ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => _comprarCompletas = false">
+                        Con pedazos (Neto)
+                    </button>
+                </div>
+            </div>
 
             @if (_calculo is null || _calculo.ConsolidatedMaterials.Count == 0)
             {
@@ -564,6 +585,8 @@
             }
             else
             {
+                decimal totalCompras = 0m;
+
                 <div class="table-responsive bg-white rounded shadow-sm border">
                     <table class="table table-sm table-striped mb-0">
                         <thead class="table-light">
@@ -578,10 +601,52 @@
                         <tbody>
                             @foreach (var m in _calculo.ConsolidatedMaterials)
                             {
+                                var matCatalogo = _catalogo?.Materials.FirstOrDefault(x => x.Code == m.MaterialCode);
+                                var costoUnitario = matCatalogo?.UnitCost
+                                    ?? (m.CommercialUnitsExact > 0m ? Math.Round(m.TotalCost / m.CommercialUnitsExact, 2) : 0m);
+                                var costoFila = _comprarCompletas
+                                    ? Math.Round(m.CommercialUnitsWhole * costoUnitario, 2)
+                                    : m.TotalCost;
+                                totalCompras += costoFila;
+
                                 <tr>
                                     <td>
                                         <div class="fw-semibold">@m.MaterialName</div>
-                                        <small class="text-muted">@m.MaterialCode</small>
+                                        @if (matCatalogo is not null && _editandoPrecioMaterialId == matCatalogo.Id)
+                                        {
+                                            <div class="d-flex align-items-center gap-1 mt-1 d-print-none">
+                                                <span class="small text-muted">RD$</span>
+                                                <input type="number" step="0.01" min="0" inputmode="decimal"
+                                                       class="form-control form-control-sm"
+                                                       style="max-width: 115px;"
+                                                       @bind="_nuevoPrecioMaterial"
+                                                       disabled="@_guardandoPrecioMaterial" />
+                                                <button type="button" class="btn btn-sm btn-success"
+                                                        @onclick="() => GuardarPrecioMaterialAsync(matCatalogo)"
+                                                        disabled="@_guardandoPrecioMaterial">
+                                                    @(_guardandoPrecioMaterial ? "..." : "OK")
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                        @onclick="CancelarEdicionPrecioMaterial"
+                                                        disabled="@_guardandoPrecioMaterial">
+                                                    X
+                                                </button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <small class="text-muted">
+                                                @m.MaterialCode · RD$ @costoUnitario.ToString("N2") c/u
+                                                @if (matCatalogo is not null)
+                                                {
+                                                    <button type="button"
+                                                            class="btn btn-link btn-sm p-0 ms-1 text-decoration-none d-print-none"
+                                                            @onclick="() => IniciarEdicionPrecioMaterial(matCatalogo)">
+                                                        Editar
+                                                    </button>
+                                                }
+                                            </small>
+                                        }
                                     </td>
                                     <td class="text-end text-nowrap">@m.RawQuantity.ToString("0.##")</td>
                                     <td class="text-end text-nowrap">@m.WastePercent.ToString("0.#")%</td>
@@ -590,16 +655,30 @@
                                         <small class="text-muted d-block">(@m.CommercialUnitsExact.ToString("0.##") exacto)</small>
                                     </td>
                                     <td class="text-end text-nowrap fw-semibold">
-                                        RD$ @m.TotalCost.ToString("N2")
+                                        RD$ @costoFila.ToString("N2")
                                     </td>
                                 </tr>
                             }
                         </tbody>
                         <tfoot class="table-light">
                             <tr>
-                                <th colspan="4" class="text-end">Costo estimado materiales</th>
-                                <th class="text-end text-primary">RD$ @_calculo.SubtotalMaterials.ToString("N2")</th>
+                                <th colspan="4" class="text-end">
+                                    @(_comprarCompletas ? "Total a pagar en ferretería" : "Costo neto de materiales")
+                                </th>
+                                <th class="text-end text-primary fs-6">RD$ @totalCompras.ToString("N2")</th>
                             </tr>
+                            @if (_comprarCompletas && totalCompras > _calculo.SubtotalMaterials)
+                            {
+                                var valorSobrante = totalCompras - _calculo.SubtotalMaterials;
+                                <tr>
+                                    <td colspan="4" class="text-end small text-muted">
+                                        Valor en sobrantes que quedan en el taller:
+                                    </td>
+                                    <td class="text-end small fw-semibold text-success">
+                                        RD$ @valorSobrante.ToString("N2")
+                                    </td>
+                                </tr>
+                            }
                         </tfoot>
                     </table>
                 </div>
@@ -613,15 +692,40 @@
         {
             <div class="card shadow-sm nw-print-doc">
                 <div class="card-body p-4">
-                    @* Encabezado profesional: Empresa (configurable por EmpresaId en Bloque 2) + Documento *@
+                    @* Encabezado profesional: datos reales de la empresa *@
                     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 pb-3 mb-3 border-bottom border-2 border-dark">
-                        <div>
-                            <h3 class="fw-bold text-dark mb-1">@EmpresaNombreBase</h3>
-                            <div class="small text-muted">
-                                @EmpresaSubtituloBase
-                            </div>
-                            <div class="small text-muted">
-                                RNC: @EmpresaRncBase · Tel: @EmpresaTelefonoBase
+                        <div class="d-flex align-items-center gap-3">
+                            @if (!string.IsNullOrWhiteSpace(_empresa?.LogoRuta))
+                            {
+                                <img src="@_empresa.LogoRuta" alt="Logo"
+                                     style="max-height: 68px; max-width: 160px; object-fit: contain;" />
+                            }
+                            <div>
+                                <h3 class="fw-bold text-dark mb-1">
+                                    @(_empresa?.Nombre ?? "Mi Empresa · NoteWork")
+                                </h3>
+                                @if (!string.IsNullOrWhiteSpace(_empresa?.Subtitulo))
+                                {
+                                    <div class="small text-muted">@_empresa.Subtitulo</div>
+                                }
+                                <div class="small text-muted">
+                                    @if (!string.IsNullOrWhiteSpace(_empresa?.Rnc))
+                                    {
+                                        <span>RNC: @_empresa.Rnc</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(_empresa?.Rnc) && !string.IsNullOrWhiteSpace(_empresa?.Telefono))
+                                    {
+                                        <span> · </span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(_empresa?.Telefono))
+                                    {
+                                        <span>Tel: @_empresa.Telefono</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(_empresa?.Direccion))
+                                {
+                                    <div class="small text-muted">@_empresa.Direccion</div>
+                                }
                             </div>
                         </div>
 
@@ -778,14 +882,11 @@
 @code {
     [Parameter] public Guid Id { get; set; }
 
-    // Datos base temporales (en Bloque 2 se leerán automáticamente del perfil de cada EmpresaId desde Admin)
-    private const string EmpresaNombreBase = "Mi Empresa · NoteWork";
-    private const string EmpresaSubtituloBase = "Fabricación e Instalación a Medida";
-    private const string EmpresaRncBase = "Por configurar";
-    private const string EmpresaTelefonoBase = "Por configurar";
+    private EmpresaDto? _empresa;
 
     private enum PestanaVista { Items, Cortes, Compras, Presupuesto }
     private PestanaVista _pestana = PestanaVista.Items;
+    private bool _comprarCompletas = true;
 
     private WorkOrderDetalleDto? _orden;
     private CatalogoUniversalPaqueteDto? _catalogo;
@@ -805,6 +906,11 @@
     private decimal _cabDescuento;
     private decimal _cabItbis;
     private string _cabNotas = "";
+
+    // Edición rápida de precio unitario desde Compras
+    private Guid? _editandoPrecioMaterialId;
+    private decimal _nuevoPrecioMaterial;
+    private bool _guardandoPrecioMaterial;
 
     // Formulario inline de ítem
     private bool _mostrarFormItem;
@@ -849,11 +955,13 @@
 
         var tareaCatalogo = ServicioCatalogo.ObtenerPaqueteAsync();
         var tareaOrden = ServicioOrdenes.ObtenerDetalleAsync(Id);
+        var tareaEmpresa = ServicioEmpresa.ObtenerAsync();
 
-        await Task.WhenAll(tareaCatalogo, tareaOrden);
+        await Task.WhenAll(tareaCatalogo, tareaOrden, tareaEmpresa);
 
         _catalogo = tareaCatalogo.Result;
         _orden = tareaOrden.Result;
+        _empresa = tareaEmpresa.Result;
 
         if (_catalogo is null)
             _error = ServicioCatalogo.UltimoError ?? "No se pudo cargar el catálogo.";
@@ -908,6 +1016,68 @@
             materials: ServicioCatalogo.ObtenerMaterialesMotor(),
             discountPercent: _orden.DiscountPercent,
             taxRatePercent: _orden.TaxRatePercent);
+    }
+
+    // =========================================================================
+    // EDICIÓN RÁPIDA DE PRECIO UNITARIO EN COMPRAS
+    // =========================================================================
+
+    private void IniciarEdicionPrecioMaterial(MaterialCatalogDto mat)
+    {
+        _error = null;
+        _mensajeOk = null;
+        _editandoPrecioMaterialId = mat.Id;
+        _nuevoPrecioMaterial = mat.UnitCost;
+    }
+
+    private void CancelarEdicionPrecioMaterial()
+    {
+        _editandoPrecioMaterialId = null;
+    }
+
+    private async Task GuardarPrecioMaterialAsync(MaterialCatalogDto mat)
+    {
+        _error = null;
+        _mensajeOk = null;
+
+        if (_nuevoPrecioMaterial < 0m)
+        {
+            _error = "El precio unitario no puede ser negativo.";
+            return;
+        }
+
+        _guardandoPrecioMaterial = true;
+
+        var dto = new GuardarMaterialCatalogDto(
+            Code: mat.Code,
+            Name: mat.Name,
+            MaterialType: mat.MaterialType,
+            CommercialLengthInches: mat.CommercialLengthInches,
+            CommercialWidthInches: mat.CommercialWidthInches,
+            CommercialHeightInches: mat.CommercialHeightInches,
+            UnitCost: _nuevoPrecioMaterial,
+            DefaultWastePercent: mat.DefaultWastePercent,
+            ColorOptions: mat.ColorOptions,
+            IsActive: mat.IsActive);
+
+        var (exito, error) = await ServicioCatalogo.EditarMaterialAsync(mat.Id, dto);
+        if (!exito)
+        {
+            _guardandoPrecioMaterial = false;
+            _error = error ?? "No se pudo actualizar el precio del material.";
+            return;
+        }
+
+        var paqueteActualizado = await ServicioCatalogo.ObtenerPaqueteAsync(forzarRecarga: true);
+        if (paqueteActualizado is not null)
+            _catalogo = paqueteActualizado;
+
+        RecalcularOrdenEnMemoria();
+        await SincronizarCabeceraConApiAsync();
+
+        _guardandoPrecioMaterial = false;
+        _editandoPrecioMaterialId = null;
+        _mensajeOk = $"Precio de {mat.Name} actualizado a RD$ {_nuevoPrecioMaterial:N2}.";
     }
 
     // =========================================================================

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NoteWork.Shared.Entidades.Universal;
 using NoteWork.Shared.Motor;
 
+
 namespace NoteWork.Api.Datos;
 
 /// <summary>
@@ -79,23 +80,32 @@ public static class SemillaCatalogoUniversal
         db.ProductCategories.AddRange(catVentanas, catPuertas, catGabinetes, catClosets);
 
         // --- 2. CATÁLOGO BASE DE MATERIALES (costos editables por cada empresa) ---
-        // Aluminio y perfiles 1D (barras de 21 pies = 252 pulgadas)
+        // Aluminio P-65 y Puerta Comercial (barras de 21 pies = 252 pulgadas)
         var aluP65Marco = NuevoMaterial(empresaId, "ALU-P65-MARCO", "Aluminio P-65 Marco / Cabezal (21')", MaterialType.Linear1D, 252m, null, null, 1850m, 10m, "Blanco,Bronce,Negro,Natural");
         var aluP65RielBajo = NuevoMaterial(empresaId, "ALU-P65-RIELB", "Aluminio P-65 Riel Bajo (21')", MaterialType.Linear1D, 252m, null, null, 2100m, 10m, "Blanco,Bronce,Negro,Natural");
         var aluP65Hoja = NuevoMaterial(empresaId, "ALU-P65-HOJA", "Aluminio P-65 Hoja / Llavín (21')", MaterialType.Linear1D, 252m, null, null, 1650m, 10m, "Blanco,Bronce,Negro,Natural");
         var aluPtaMarco = NuevoMaterial(empresaId, "ALU-PTA-MARCO", "Aluminio Puerta Comercial Marco (21')", MaterialType.Linear1D, 252m, null, null, 2950m, 10m, "Blanco,Bronce,Negro,Natural");
         var aluPtaHoja = NuevoMaterial(empresaId, "ALU-PTA-HOJA", "Aluminio Puerta Comercial Hoja (21')", MaterialType.Linear1D, 252m, null, null, 2750m, 10m, "Blanco,Bronce,Negro,Natural");
+
+        // Aluminio Ventana Tradicional (barras de 21 pies = 252 pulgadas)
+        var aluTradMarco = NuevoMaterial(empresaId, "ALU-TRAD-MARCO", "Aluminio Ventana Tradicional Marco / Cabezal (21')", MaterialType.Linear1D, 252m, null, null, 1350m, 10m, "Blanco,Bronce,Negro,Natural");
+        var aluTradRiel = NuevoMaterial(empresaId, "ALU-TRAD-RIEL", "Aluminio Ventana Tradicional Riel Inferior (21')", MaterialType.Linear1D, 252m, null, null, 1450m, 10m, "Blanco,Bronce,Negro,Natural");
+        var aluTradHoja = NuevoMaterial(empresaId, "ALU-TRAD-HOJA", "Aluminio Ventana Tradicional Hoja / Llavín (21')", MaterialType.Linear1D, 252m, null, null, 1250m, 10m, "Blanco,Bronce,Negro,Natural");
+
+        // Perfiles complementarios, tapacanto, goma y felpa
         var tuboColgador = NuevoMaterial(empresaId, "TUBO-OVAL", "Tubo Ovalado Colgador Cromado (12')", MaterialType.Linear1D, 144m, null, null, 450m, 5m, "Cromado,Negro");
         var tapacantoPvc = NuevoMaterial(empresaId, "TAPA-PVC", "Tapacanto PVC 1mm (por pie)", MaterialType.Linear1D, null, null, null, 15m, 10m, "Blanco,Roble,Nogal,Gris");
-        var gomaCristal = NuevoMaterial(empresaId, "GOMA-CRI", "Goma / Felpa para Cristal (por pie)", MaterialType.Linear1D, null, null, null, 12m, 5m, "Negro,Gris");
+        var gomaCristal = NuevoMaterial(empresaId, "GOMA-CRI", "Goma / Vinil para Cristal (por pie)", MaterialType.Linear1D, null, null, null, 12m, 5m, "Negro,Gris");
+        var felpaAluminio = NuevoMaterial(empresaId, "FELPA-ALU", "Felpa Perimetral Sellado Aluminio (por pie)", MaterialType.Linear1D, null, null, null, 8m, 5m, "Negro,Gris");
 
         // Planchas 2D (cristal y tableros)
         var cristal14 = NuevoMaterial(empresaId, "CRI-14", "Cristal Claro 1/4\" (130\" x 84\")", MaterialType.Sheet2D, null, 130m, 84m, 6800m, 12m, "Claro,Bronce,Gris,Esmerilado");
         var melamina34 = NuevoMaterial(empresaId, "MEL-34", "Plancha Melamina 3/4\" (48\" x 96\")", MaterialType.Sheet2D, null, 48m, 96m, 3400m, 12m, "Blanco,Roble,Nogal,Gris,Antracita");
         var fondoMdf14 = NuevoMaterial(empresaId, "MDF-14", "Plancha Fondo MDF 1/4\" (48\" x 96\")", MaterialType.Sheet2D, null, 48m, 96m, 1250m, 10m, "Blanco,Crudo");
 
-        // Herrajes por unidad
+        // Herrajes principales por unidad
         var ruedaVentana = NuevoMaterial(empresaId, "HER-RUEDA-V", "Rueda de Ventana Corrediza", MaterialType.Unit, null, null, null, 95m, 0m, null);
+        var guiaVentanaTrad = NuevoMaterial(empresaId, "HER-GUIA-TRAD", "Guía Superior Ventana Tradicional", MaterialType.Unit, null, null, null, 35m, 0m, null);
         var ruedaPuerta = NuevoMaterial(empresaId, "HER-RUEDA-P", "Rueda Pesada Puerta Corrediza", MaterialType.Unit, null, null, null, 240m, 0m, null);
         var cerraduraVentana = NuevoMaterial(empresaId, "HER-CERR-V", "Pestillo / Cerradura de Ventana", MaterialType.Unit, null, null, null, 320m, 0m, "Blanco,Negro,Bronce");
         var cerraduraPuerta = NuevoMaterial(empresaId, "HER-CERR-P", "Cerradura de Puerta Corrediza", MaterialType.Unit, null, null, null, 1150m, 0m, "Blanco,Negro,Plata");
@@ -104,14 +114,29 @@ public static class SemillaCatalogoUniversal
         var tirador = NuevoMaterial(empresaId, "HER-TIRADOR", "Tirador / Jaladera Estándar", MaterialType.Unit, null, null, null, 160m, 0m, "Negro,Plata,Dorado");
         var soporteTubo = NuevoMaterial(empresaId, "HER-SOP-TUBO", "Soporte Lateral para Tubo Ovalado", MaterialType.Unit, null, null, null, 65m, 0m, "Cromado,Negro");
 
+        // Tornillería y consumibles de taller / instalación
+        var tornilloEnsAlu = NuevoMaterial(empresaId, "TOR-ENS-ALU", "Tornillo Ensamblaje Aluminio #8 x 1\"", MaterialType.Unit, null, null, null, 3.50m, 5m, null);
+        var tornilloEnsMel = NuevoMaterial(empresaId, "TOR-ENS-MEL", "Tornillo Ensamblaje Melamina / Confirmat 2\"", MaterialType.Unit, null, null, null, 4.00m, 5m, null);
+        var tornilloBisagra = NuevoMaterial(empresaId, "TOR-BISAGRA", "Tornillo Herraje / Bisagra 5/8\"", MaterialType.Unit, null, null, null, 2.00m, 5m, null);
+        var tornilloInstTarugo = NuevoMaterial(empresaId, "TOR-INST-TAR", "Tornillo Instalación 2 1/2\" + Tarugo 1/4\" (Set)", MaterialType.Unit, null, null, null, 12.00m, 5m, null);
+        var siliconSellador = NuevoMaterial(empresaId, "CONS-SILICON", "Tubo de Silicón Sellador 300ml", MaterialType.Unit, null, null, null, 260.00m, 0m, "Transparente,Blanco,Negro,Bronce");
+        var remachePop = NuevoMaterial(empresaId, "CONS-REMACHE", "Remache Pop Aluminio 1/8\" x 1/2\"", MaterialType.Unit, null, null, null, 2.50m, 5m, null);
+        var escuadraAlu = NuevoMaterial(empresaId, "CONS-ESCUADRA", "Escuadra / Ángulo Ensamblaje Aluminio", MaterialType.Unit, null, null, null, 25.00m, 0m, null);
+        var tapatornilloPvc = NuevoMaterial(empresaId, "CONS-TAPATOR", "Tapatornillo Adhesivo PVC", MaterialType.Unit, null, null, null, 1.50m, 5m, "Blanco,Roble,Nogal,Gris,Antracita");
+        var topeGoma = NuevoMaterial(empresaId, "CONS-TOPE", "Tope Amortiguador Goma (Puerta / Gaveta)", MaterialType.Unit, null, null, null, 3.00m, 0m, null);
+
         db.MaterialCatalog.AddRange(
             aluP65Marco, aluP65RielBajo, aluP65Hoja,
-            aluPtaMarco, aluPtaHoja, tuboColgador, tapacantoPvc, gomaCristal,
+            aluPtaMarco, aluPtaHoja,
+            aluTradMarco, aluTradRiel, aluTradHoja,
+            tuboColgador, tapacantoPvc, gomaCristal, felpaAluminio,
             cristal14, melamina34, fondoMdf14,
-            ruedaVentana, ruedaPuerta, cerraduraVentana, cerraduraPuerta,
-            bisagraCazoleta, correderaPar, tirador, soporteTubo);
+            ruedaVentana, guiaVentanaTrad, ruedaPuerta, cerraduraVentana, cerraduraPuerta,
+            bisagraCazoleta, correderaPar, tirador, soporteTubo,
+            tornilloEnsAlu, tornilloEnsMel, tornilloBisagra, tornilloInstTarugo,
+            siliconSellador, remachePop, escuadraAlu, tapatornilloPvc, topeGoma);
 
-        // --- 3. MODELOS FABRICABLES (1 por categoría listos para cotizar y desglosar) ---
+        // --- 3. MODELOS FABRICABLES ---
         var modVentanaP65 = new ProductModel
         {
             EmpresaId = empresaId,
@@ -123,6 +148,19 @@ public static class SemillaCatalogoUniversal
             DefaultLaborValue = 25m,
             DefaultMarginPercent = 30m,
             SortOrder = 1
+        };
+
+        var modVentanaTrad = new ProductModel
+        {
+            EmpresaId = empresaId,
+            CategoryId = catVentanas.Id,
+            Code = "VENT-TRAD",
+            Name = "Ventana Corrediza Tradicional",
+            DefaultBoardThicknessSixteenths = 0,
+            DefaultLaborMode = LaborMode.Percent,
+            DefaultLaborValue = 25m,
+            DefaultMarginPercent = 30m,
+            SortOrder = 2
         };
 
         var modPuertaCorr = new ProductModel
@@ -151,6 +189,19 @@ public static class SemillaCatalogoUniversal
             SortOrder = 1
         };
 
+        var modGabineteAereo = new ProductModel
+        {
+            EmpresaId = empresaId,
+            CategoryId = catGabinetes.Id,
+            Code = "GAB-AEREO",
+            Name = "Gabinete Aéreo / Pared Cocina (3/4\")",
+            DefaultBoardThicknessSixteenths = 12, // 3/4" = 12/16"
+            DefaultLaborMode = LaborMode.Percent,
+            DefaultLaborValue = 35m,
+            DefaultMarginPercent = 35m,
+            SortOrder = 2
+        };
+
         var modClosetModular = new ProductModel
         {
             EmpresaId = empresaId,
@@ -164,7 +215,11 @@ public static class SemillaCatalogoUniversal
             SortOrder = 1
         };
 
-        db.ProductModels.AddRange(modVentanaP65, modPuertaCorr, modGabineteBase, modClosetModular);
+        db.ProductModels.AddRange(
+            modVentanaP65, modVentanaTrad,
+            modPuertaCorr,
+            modGabineteBase, modGabineteAereo,
+            modClosetModular);
 
         // Condiciones JSON reutilizables
         var condRielNormal = CondJson(new RuleCondition(IsLowTrack: false));
@@ -185,6 +240,18 @@ public static class SemillaCatalogoUniversal
             Regla2D(empresaId, modVentanaP65.Id, "Cristal 1/4\"", cristal14.Id, MeasureMode.Rect2D,
                 DimensionAxis.Width, DivisorSource.LeafCount, -32, 0,
                 DimensionAxis.Height, DivisorSource.ConstantOne, -48, 0,
+                QuantityMode.PerLeaf, 1, null, 7),
+
+            // === VENTANA CORREDIZA TRADICIONAL ===
+            Regla1D(empresaId, modVentanaTrad.Id, "Cabezal Superior Tradicional", aluTradMarco.Id, DimensionAxis.Width, DivisorSource.ConstantOne, 0, 0, QuantityMode.Fixed, 1, null, 1),
+            Regla1D(empresaId, modVentanaTrad.Id, "Riel Inferior Tradicional", aluTradRiel.Id, DimensionAxis.Width, DivisorSource.ConstantOne, 0, 0, QuantityMode.Fixed, 1, condRielNormal, 2),
+            Regla1D(empresaId, modVentanaTrad.Id, "Riel Bajo", aluP65RielBajo.Id, DimensionAxis.Width, DivisorSource.ConstantOne, 0, 0, QuantityMode.Fixed, 1, condRielBajo, 3),
+            Regla1D(empresaId, modVentanaTrad.Id, "Jambas Laterales Tradicional", aluTradMarco.Id, DimensionAxis.Height, DivisorSource.ConstantOne, 0, 0, QuantityMode.Fixed, 2, null, 4),
+            Regla1D(empresaId, modVentanaTrad.Id, "Horizontales de Hoja Tradicional", aluTradHoja.Id, DimensionAxis.Width, DivisorSource.LeafCount, -12, 0, QuantityMode.PerLeaf, 2, null, 5),
+            Regla1D(empresaId, modVentanaTrad.Id, "Verticales de Hoja (Llavín/Traslape)", aluTradHoja.Id, DimensionAxis.Height, DivisorSource.ConstantOne, -20, 0, QuantityMode.PerLeaf, 2, null, 6),
+            Regla2D(empresaId, modVentanaTrad.Id, "Cristal 1/4\"", cristal14.Id, MeasureMode.Rect2D,
+                DimensionAxis.Width, DivisorSource.LeafCount, -28, 0,
+                DimensionAxis.Height, DivisorSource.ConstantOne, -40, 0,
                 QuantityMode.PerLeaf, 1, null, 7),
 
             // === PUERTA CORREDIZA COMERCIAL ===
@@ -229,6 +296,32 @@ public static class SemillaCatalogoUniversal
                 DimensionAxis.Height, DivisorSource.ConstantOne, -8, 0,
                 QuantityMode.Fixed, 1, null, 7),
 
+            // === GABINETE AÉREO / PARED COCINA (3D) ===
+            Regla2D(empresaId, modGabineteAereo.Id, "Costados Laterales", melamina34.Id, MeasureMode.Rect2D,
+                DimensionAxis.Depth, DivisorSource.ConstantOne, 0, 0,
+                DimensionAxis.Height, DivisorSource.ConstantOne, 0, 0,
+                QuantityMode.Fixed, 2, null, 1),
+            Regla2D(empresaId, modGabineteAereo.Id, "Techo y Piso Interior", melamina34.Id, MeasureMode.Rect2D,
+                DimensionAxis.Width, DivisorSource.ConstantOne, 0, -2,
+                DimensionAxis.Depth, DivisorSource.ConstantOne, 0, 0,
+                QuantityMode.Fixed, 2, null, 2),
+            Regla2D(empresaId, modGabineteAereo.Id, "Tramos / Repisas Interiores", melamina34.Id, MeasureMode.Rect2D,
+                DimensionAxis.Width, DivisorSource.ConstantOne, 0, -2,
+                DimensionAxis.Depth, DivisorSource.ConstantOne, -16, 0,
+                QuantityMode.PerShelf, 1, condConRepisas, 3),
+            Regla2D(empresaId, modGabineteAereo.Id, "Puertas Frontales", melamina34.Id, MeasureMode.Rect2D,
+                DimensionAxis.Width, DivisorSource.DoorCount, -2, 0,
+                DimensionAxis.Height, DivisorSource.ConstantOne, -4, 0,
+                QuantityMode.PerDoor, 1, condConPuertas, 4),
+            Regla2D(empresaId, modGabineteAereo.Id, "Tapacanto de Puertas", tapacantoPvc.Id, MeasureMode.Perimeter1D,
+                DimensionAxis.Width, DivisorSource.DoorCount, -2, 0,
+                DimensionAxis.Height, DivisorSource.ConstantOne, -4, 0,
+                QuantityMode.PerDoor, 1, condConPuertas, 5),
+            Regla2D(empresaId, modGabineteAereo.Id, "Fondo MDF 1/4\"", fondoMdf14.Id, MeasureMode.Rect2D,
+                DimensionAxis.Width, DivisorSource.ConstantOne, -8, 0,
+                DimensionAxis.Height, DivisorSource.ConstantOne, -8, 0,
+                QuantityMode.Fixed, 1, null, 6),
+
             // === CLOSET MODULAR (3D) ===
             Regla2D(empresaId, modClosetModular.Id, "Costados Laterales", melamina34.Id, MeasureMode.Rect2D,
                 DimensionAxis.Depth, DivisorSource.ConstantOne, 0, 0,
@@ -257,30 +350,82 @@ public static class SemillaCatalogoUniversal
                 QuantityMode.Fixed, 1, null, 7)
         );
 
-        // --- 5. REGLAS DE HERRAJES ---
+        // --- 5. REGLAS DE HERRAJES, TORNILLERÍA Y CONSUMIBLES ---
         db.ProductHardwareRules.AddRange(
-            // Ventana P-65
+            // === Ventana P-65 ===
             ReglaHerraje(empresaId, modVentanaP65.Id, ruedaVentana.Id, HardwareCalculationBasis.PerLeaf, 2m, null, 1),
             ReglaHerraje(empresaId, modVentanaP65.Id, cerraduraVentana.Id, HardwareCalculationBasis.PerUnit, 1m, null, 2),
             ReglaHerraje(empresaId, modVentanaP65.Id, gomaCristal.Id, HardwareCalculationBasis.PerimeterFeet, 1m, null, 3),
+            ReglaHerraje(empresaId, modVentanaP65.Id, felpaAluminio.Id, HardwareCalculationBasis.PerimeterFeet, 1m, null, 4),
+            ReglaHerraje(empresaId, modVentanaP65.Id, escuadraAlu.Id, HardwareCalculationBasis.PerUnit, 4m, null, 5),
+            ReglaHerraje(empresaId, modVentanaP65.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerUnit, 8m, null, 6),
+            ReglaHerraje(empresaId, modVentanaP65.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerLeaf, 4m, null, 7),
+            ReglaHerraje(empresaId, modVentanaP65.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 6m, null, 8),
+            ReglaHerraje(empresaId, modVentanaP65.Id, remachePop.Id, HardwareCalculationBasis.PerUnit, 4m, null, 9),
+            ReglaHerraje(empresaId, modVentanaP65.Id, siliconSellador.Id, HardwareCalculationBasis.PerimeterFeet, 0.05m, null, 10),
 
-            // Puerta Corrediza Comercial
+            // === Ventana Corrediza Tradicional ===
+            ReglaHerraje(empresaId, modVentanaTrad.Id, ruedaVentana.Id, HardwareCalculationBasis.PerLeaf, 2m, null, 1),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, guiaVentanaTrad.Id, HardwareCalculationBasis.PerLeaf, 2m, null, 2),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, cerraduraVentana.Id, HardwareCalculationBasis.PerUnit, 1m, null, 3),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, gomaCristal.Id, HardwareCalculationBasis.PerimeterFeet, 1m, null, 4),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, felpaAluminio.Id, HardwareCalculationBasis.PerimeterFeet, 1m, null, 5),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerUnit, 8m, null, 6),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerLeaf, 4m, null, 7),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 6m, null, 8),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, remachePop.Id, HardwareCalculationBasis.PerUnit, 4m, null, 9),
+            ReglaHerraje(empresaId, modVentanaTrad.Id, siliconSellador.Id, HardwareCalculationBasis.PerimeterFeet, 0.05m, null, 10),
+
+            // === Puerta Corrediza Comercial ===
             ReglaHerraje(empresaId, modPuertaCorr.Id, ruedaPuerta.Id, HardwareCalculationBasis.PerLeaf, 2m, null, 1),
             ReglaHerraje(empresaId, modPuertaCorr.Id, cerraduraPuerta.Id, HardwareCalculationBasis.PerUnit, 1m, null, 2),
             ReglaHerraje(empresaId, modPuertaCorr.Id, gomaCristal.Id, HardwareCalculationBasis.PerimeterFeet, 1m, null, 3),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, felpaAluminio.Id, HardwareCalculationBasis.PerimeterFeet, 1.5m, null, 4),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, escuadraAlu.Id, HardwareCalculationBasis.PerUnit, 4m, null, 5),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerUnit, 12m, null, 6),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, tornilloEnsAlu.Id, HardwareCalculationBasis.PerLeaf, 8m, null, 7),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 8m, null, 8),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, remachePop.Id, HardwareCalculationBasis.PerUnit, 6m, null, 9),
+            ReglaHerraje(empresaId, modPuertaCorr.Id, siliconSellador.Id, HardwareCalculationBasis.PerimeterFeet, 0.06m, null, 10),
 
-            // Gabinete Base Cocina
+            // === Gabinete Base Cocina ===
             ReglaHerraje(empresaId, modGabineteBase.Id, bisagraCazoleta.Id, HardwareCalculationBasis.PerDoor, 2m, condConPuertas, 1),
             ReglaHerraje(empresaId, modGabineteBase.Id, correderaPar.Id, HardwareCalculationBasis.PerDrawer, 1m, condConGavetas, 2),
             ReglaHerraje(empresaId, modGabineteBase.Id, tirador.Id, HardwareCalculationBasis.PerDoor, 1m, condConPuertas, 3),
             ReglaHerraje(empresaId, modGabineteBase.Id, tirador.Id, HardwareCalculationBasis.PerDrawer, 1m, condConGavetas, 4),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tornilloEnsMel.Id, HardwareCalculationBasis.PerUnit, 16m, null, 5),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tornilloEnsMel.Id, HardwareCalculationBasis.PerDrawer, 8m, condConGavetas, 6),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tornilloBisagra.Id, HardwareCalculationBasis.PerDoor, 8m, condConPuertas, 7),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tornilloBisagra.Id, HardwareCalculationBasis.PerDrawer, 8m, condConGavetas, 8),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 4m, null, 9),
+            ReglaHerraje(empresaId, modGabineteBase.Id, tapatornilloPvc.Id, HardwareCalculationBasis.PerUnit, 12m, null, 10),
+            ReglaHerraje(empresaId, modGabineteBase.Id, topeGoma.Id, HardwareCalculationBasis.PerDoor, 2m, condConPuertas, 11),
+            ReglaHerraje(empresaId, modGabineteBase.Id, topeGoma.Id, HardwareCalculationBasis.PerDrawer, 2m, condConGavetas, 12),
+            ReglaHerraje(empresaId, modGabineteBase.Id, siliconSellador.Id, HardwareCalculationBasis.PerimeterFeet, 0.03m, null, 13),
 
-            // Closet Modular
+            // === Gabinete Aéreo / Pared Cocina ===
+            ReglaHerraje(empresaId, modGabineteAereo.Id, bisagraCazoleta.Id, HardwareCalculationBasis.PerDoor, 2m, condConPuertas, 1),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, tirador.Id, HardwareCalculationBasis.PerDoor, 1m, condConPuertas, 2),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, tornilloEnsMel.Id, HardwareCalculationBasis.PerUnit, 18m, null, 3),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, tornilloBisagra.Id, HardwareCalculationBasis.PerDoor, 8m, condConPuertas, 4),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 6m, null, 5),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, tapatornilloPvc.Id, HardwareCalculationBasis.PerUnit, 16m, null, 6),
+            ReglaHerraje(empresaId, modGabineteAereo.Id, topeGoma.Id, HardwareCalculationBasis.PerDoor, 2m, condConPuertas, 7),
+
+            // === Closet Modular ===
             ReglaHerraje(empresaId, modClosetModular.Id, bisagraCazoleta.Id, HardwareCalculationBasis.PerDoor, 3m, condConPuertas, 1),
             ReglaHerraje(empresaId, modClosetModular.Id, correderaPar.Id, HardwareCalculationBasis.PerDrawer, 1m, condConGavetas, 2),
             ReglaHerraje(empresaId, modClosetModular.Id, tirador.Id, HardwareCalculationBasis.PerDoor, 1m, condConPuertas, 3),
             ReglaHerraje(empresaId, modClosetModular.Id, tirador.Id, HardwareCalculationBasis.PerDrawer, 1m, condConGavetas, 4),
-            ReglaHerraje(empresaId, modClosetModular.Id, soporteTubo.Id, HardwareCalculationBasis.PerUnit, 2m, null, 5)
+            ReglaHerraje(empresaId, modClosetModular.Id, soporteTubo.Id, HardwareCalculationBasis.PerUnit, 2m, null, 5),
+            ReglaHerraje(empresaId, modClosetModular.Id, tornilloEnsMel.Id, HardwareCalculationBasis.PerUnit, 20m, null, 6),
+            ReglaHerraje(empresaId, modClosetModular.Id, tornilloEnsMel.Id, HardwareCalculationBasis.PerDrawer, 8m, condConGavetas, 7),
+            ReglaHerraje(empresaId, modClosetModular.Id, tornilloBisagra.Id, HardwareCalculationBasis.PerDoor, 12m, condConPuertas, 8),
+            ReglaHerraje(empresaId, modClosetModular.Id, tornilloBisagra.Id, HardwareCalculationBasis.PerDrawer, 8m, condConGavetas, 9),
+            ReglaHerraje(empresaId, modClosetModular.Id, tornilloInstTarugo.Id, HardwareCalculationBasis.PerUnit, 6m, null, 10),
+            ReglaHerraje(empresaId, modClosetModular.Id, tapatornilloPvc.Id, HardwareCalculationBasis.PerUnit, 16m, null, 11),
+            ReglaHerraje(empresaId, modClosetModular.Id, topeGoma.Id, HardwareCalculationBasis.PerDoor, 2m, condConPuertas, 12),
+            ReglaHerraje(empresaId, modClosetModular.Id, topeGoma.Id, HardwareCalculationBasis.PerDrawer, 2m, condConGavetas, 13)
         );
 
         await db.SaveChangesAsync();
